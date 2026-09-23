@@ -6,18 +6,15 @@ import { createRandom } from '../src/utils/random.ts';
 
 const kStone = { ids: [1], layer: 'Structure' };
 const kStair = { ids: [2], layer: 'Structure' };
-const kFlower = { ids: [3], layer: 'Detail' };
+const kLeaves = { ids: [3], layer: 'Garden' };
 const kRock = { ids: [4, 5, 6], layer: 'Terrain' };
 
 function recordingBrush() {
   const cells = new Map();
   const world = {
-    getLayer(name) {
-      return {
-        setVoxelAt({ x, y, z }, entry) { cells.set(`${name}|${x},${y},${z}`, entry); },
-        removeVoxelAt({ x, y, z }) { cells.delete(`${name}|${x},${y},${z}`); }
-      };
-    }
+    getLayer: (name) => ({ name }),
+    setVoxel(name, { position: { x, y, z }, ...entry }) { cells.set(`${name}|${x},${y},${z}`, entry); },
+    removeVoxel(name, { position: { x, y, z } }) { cells.delete(`${name}|${x},${y},${z}`); }
   };
 
   return { brush: Brush.forWorld(world), cells };
@@ -44,8 +41,8 @@ test('disc contains lattice points inside the requested radius', () => {
 test('blocks are written to their own layer', () => {
   const { brush, cells } = recordingBrush();
   brush.put([0, 0, 0], kStone);
-  brush.put([0, 1, 0], kFlower);
-  assert.deepEqual([...cells.keys()], ['Structure|0,0,0', 'Detail|0,1,0']);
+  brush.put([0, 1, 0], kLeaves);
+  assert.deepEqual([...cells.keys()], ['Structure|0,0,0', 'Garden|0,1,0']);
 });
 
 test('alternate tiles are chosen from the world position', () => {
@@ -61,7 +58,7 @@ test('alternate tiles are chosen from the world position', () => {
 test('clear empties every layer', () => {
   const { brush, cells } = recordingBrush();
   brush.put([0, 0, 0], kStone);
-  brush.put([0, 0, 0], kFlower);
+  brush.put([0, 0, 0], kLeaves);
   brush.put([1, 0, 0], kStone);
   brush.clear([0, 0, 0], [0, 0, 0]);
   assert.deepEqual([...cells.keys()], ['Structure|1,0,0']);
@@ -73,8 +70,8 @@ test('translated brushes compose offsets, rotations and flips', () => {
   translated.put([1, 2, 3], kStair, { ...rising('W'), flipY: true });
   const [[key, entry]] = cells;
   assert.equal(key, 'Structure|41,3,-17');
-  assert.equal(entry.transform & 3, 3);
-  assert.ok((entry.transform & 16) !== 0);
+  assert.equal(entry.rotation, 3);
+  assert.equal(entry.flipY, true);
 });
 
 test('orientation helpers follow the engine rotation table', () => {

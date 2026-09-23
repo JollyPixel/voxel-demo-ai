@@ -6,7 +6,7 @@ import type { Brush } from "../builder/Brush.ts";
 const kShapes = [
   B.sandstone, B.sandstone.slabBottom, B.sandstone.slabTop, B.sandstone.pole, B.sandstone.poleY,
   B.sandstone.ramp, B.sandstone.rampCornerInner, B.sandstone.rampCornerOuter,
-  B.sandstone.stair, B.sandstone.stairCornerInner, B.sandstone.stairCornerOuter, B.frond
+  B.sandstone.stair, B.sandstone.stairCornerInner, B.sandstone.stairCornerOuter
 ];
 const kFlips = [
   {},

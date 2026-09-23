@@ -1,13 +1,11 @@
 // Import Third-party Dependencies
-import {
-  VoxelTransform,
-  type VoxelLayer,
-  type VoxelTransformOptions,
-  type VoxelWorld
+import type {
+  VoxelTransformOptions,
+  VoxelWorld
 } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
-import { LAYERS, type Block, type Layer } from "../blocks/index.ts";
+import { LAYERS, type Block } from "../blocks/index.ts";
 import { hash } from "../utils/noise.ts";
 import type { Fixtures, PointLightFixture } from "./fixtures.ts";
 
@@ -21,8 +19,14 @@ export type CellPicker = (x: number, y: number, z: number) => Block | undefined;
 // CONSTANTS
 const kAlternateSeed = 97;
 
+/**
+ * The world calls a brush writes through. Wrap a large build in
+ * `world.transaction()` so chunks are dirtied once rather than per voxel.
+ */
+export type BrushWorld = Pick<VoxelWorld, "getLayer" | "setVoxel" | "removeVoxel">;
+
 interface BrushTarget {
-  layers: Record<Layer, VoxelLayer>;
+  world: BrushWorld;
   fixtures: Fixtures;
 }
 
@@ -33,18 +37,15 @@ interface BrushTarget {
  */
 export class Brush {
   static forWorld(
-    world: Pick<VoxelWorld, "getLayer">
+    world: BrushWorld
   ): Brush {
-    const layers = Object.fromEntries(LAYERS.map((name) => {
-      const layer = world.getLayer(name);
-      if (!layer) {
+    for (const name of LAYERS) {
+      if (!world.getLayer(name)) {
         throw new Error(`Brush: missing world layer "${name}"`);
       }
+    }
 
-      return [name, layer];
-    })) as Record<Layer, VoxelLayer>;
-
-    return new Brush({ layers, fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
+    return new Brush({ world, fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
   }
 
   readonly #target: BrushTarget;
@@ -84,10 +85,7 @@ export class Brush {
     const { ids } = block;
     const id = ids.length === 1 ? ids[0] : ids[Math.floor(hash(x, y, z, kAlternateSeed) * ids.length)];
 
-    this.#target.layers[block.layer].setVoxelAt(
-      { x, y, z },
-      { blockId: id, transform: VoxelTransform.pack(transform) }
-    );
+    this.#target.world.setVoxel(block.layer, { position: { x, y, z }, blockId: id, ...transform });
   }
 
   box(
@@ -128,13 +126,13 @@ export class Brush {
   ): void {
     const [x0, y0, z0] = this.#cell(from);
     const [x1, y1, z1] = this.#cell(to);
-    const layers = Object.values(this.#target.layers);
+    const { world } = this.#target;
 
     for (let y = y0; y <= y1; y++) {
       for (let z = z0; z <= z1; z++) {
         for (let x = x0; x <= x1; x++) {
-          for (const layer of layers) {
-            layer.removeVoxelAt({ x, y, z });
+          for (const layer of LAYERS) {
+            world.removeVoxel(layer, { position: { x, y, z } });
           }
         }
       }

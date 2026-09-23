@@ -15,7 +15,10 @@ export function hash(
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function smooth(
+/**
+ * Smoothstep easing of `t` in [0, 1].
+ */
+export function smooth(
   t: number
 ): number {
   return t * t * (3 - 2 * t);

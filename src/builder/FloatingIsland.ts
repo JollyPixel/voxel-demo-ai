@@ -46,7 +46,7 @@ interface Column {
 /**
  * A floating island in local coordinates, centred on the origin: a noisy
  * outline, a gently rolling surface and a deep inverted cone of layered rock
- * with hanging spires and roots.
+ * with hanging spires.
  */
 export class FloatingIsland {
   readonly options: Required<FloatingIslandOptions>;
@@ -102,7 +102,6 @@ export class FloatingIsland {
         }
         b.put([x, y, z], this.#materialAt(x, y, z, top));
       }
-      this.#decorate(b, x, z, top, bottom);
     }
   }
 
@@ -177,27 +176,5 @@ export class FloatingIsland {
     }
 
     return band % 2 === 0 ? B.ochreRock : B.rock;
-  }
-
-  #decorate(
-    b: Brush,
-    x: number,
-    z: number,
-    top: number,
-    bottom: number
-  ): void {
-    const { surface, flatRadius, seed } = this.options;
-    const distance = Math.hypot(x, z);
-
-    // Roots only hang where the rock is deep enough to have grown them.
-    if (top - bottom > 6 && hash(x, 2, z, seed) > 0.9 && distance / this.radiusToward(x, z) > 0.55) {
-      b.put([x, bottom - 1, z], B.roots);
-    }
-    if (distance < flatRadius) {
-      return;
-    }
-    if (surface === "grass" && hash(x, 3, z, seed) > 0.86) {
-      b.put([x, top + 1, z], B.tuft);
-    }
   }
 }

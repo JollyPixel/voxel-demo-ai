@@ -2,8 +2,6 @@
 import { hash } from "../../utils/noise.ts";
 import {
   Palette,
-  TILE_SIZE,
-  wrap,
   type TileCanvas,
   type TilePainter
 } from "./tile.ts";
@@ -23,45 +21,68 @@ export interface MasonryOptions {
   stagger: number;
   /**
    * How far a block's base tone may stray from the middle of the palette.
-   * @default 1
+   * @default 0.35
    */
   variation?: number;
 }
 
 /**
- * Bevelled blocks laid in courses: a lit top edge, a shaded bottom edge,
- * dark mortar joints and a speckled face.
+ * Dressed stone laid in courses, after the reference tileset: flat, pale
+ * faces barely mottled, a lit rim on the top and left of each block, a
+ * shaded rim on its bottom and right, and a soft joint.
  */
 export function masonry(
   palette: Palette,
   options: MasonryOptions
 ): TilePainter {
-  const { course, length, stagger, variation = 1 } = options;
+  const { course, length, stagger, variation = 0.35 } = options;
   const middle = (palette.size - 1) / 2;
 
   return (tile) => tile.each((u, v) => {
     const row = Math.floor(v / course);
     const shifted = u + (row % 2) * stagger;
-    const column = Math.floor(shifted / length);
-    const x = wrap(shifted) % length;
+    const column = Math.floor(tile.wrap(shifted) / length);
+    const x = tile.wrap(shifted) % length;
     const y = v % course;
 
     if (y === course - 1 || x === length - 1) {
-      tile.set(u, v, palette.at(0));
+      tile.set(u, v, palette.mix(0.5));
 
       return;
     }
 
-    const blockTone = Math.round((hash(column % (TILE_SIZE / length), row, 7, tile.seed) - 0.5) * 2 * variation);
-    let level = middle + blockTone;
+    let level = middle + (hash(column, row, 7, tile.seed) - 0.5) * 2 * variation;
     if (y === 0 || x === 0) {
-      level += 1;
+      level += 1.1;
     }
     else if (y === course - 2 || x === length - 2) {
-      level -= 1;
+      level -= 0.9;
     }
-    level += speckle(tile, u, v);
-    tile.set(u, v, palette.at(level));
+    level += (tile.smoothNoise(u, v, 8, 1) - 0.5) * 0.4 + (tile.noise(u, v, 2) - 0.5) * 0.15;
+    tile.set(u, v, palette.mix(level));
+  });
+}
+
+/**
+ * Fluted column shaft, after the reference tileset: rounded vertical ribs
+ * lit from the left, between plain bands at the top and bottom.
+ */
+export function fluted(
+  palette: Palette,
+  flute = 8
+): TilePainter {
+  const middle = (palette.size - 1) / 2;
+
+  return (tile) => tile.each((u, v) => {
+    const band = v < 2 || v >= tile.size - 2;
+    const x = u % flute;
+    let level = band ? middle + (v === 0 || v === tile.size - 2 ? 1 : -0.6) :
+      middle + Math.cos(((x + 0.5) / flute) * Math.PI) * 1.2;
+    if (!band && x === flute - 1) {
+      level = 0.6;
+    }
+    level += (tile.smoothNoise(u, v, 8, 3) - 0.5) * 0.3;
+    tile.set(u, v, palette.mix(level));
   });
 }
 
@@ -92,7 +113,7 @@ export function flagstones(
     const seeds = voronoiSeeds(tile, stones);
 
     tile.each((u, v) => {
-      const { nearest, gap } = voronoi(seeds, u, v);
+      const { nearest, gap } = voronoi(tile, seeds, u, v);
       if (gap < 1.1) {
         tile.set(u, v, palette.at(0));
 
@@ -106,25 +127,26 @@ export function flagstones(
 }
 
 /**
- * Weathered rock: noisy tone, horizontal bedding and dark cracks.
+ * Weathered rock at full resolution: a soft mottle over wavering bedding,
+ * split into slabs by dark cracks with shaded rims.
  */
 export function rock(
   palette: Palette
 ): TilePainter {
   return (tile) => {
-    const seeds = voronoiSeeds(tile, 4);
+    const seeds = voronoiSeeds(tile, 6);
 
     tile.each((u, v) => {
-      const { gap } = voronoi(seeds, u, v);
-      const bedding = Math.sin((v + tile.noise(0, v, 5) * 2) * 1.3) * 0.6;
-      let level = 2 + bedding + (tile.noise(u, v, 2) - 0.5) * 1.6;
-      if (gap < 0.9) {
-        level -= 2;
+      const { gap } = voronoi(tile, seeds, u, v);
+      const bedding = Math.sin((v + tile.smoothNoise(u, v, 16, 5) * 6) / tile.size * Math.PI * 8) * 0.45;
+      let level = 2 + bedding + (tile.smoothNoise(u, v, 8, 2) - 0.5) * 1.4 + (tile.noise(u, v, 3) - 0.5) * 0.4;
+      if (gap < 1.2) {
+        level -= 1.8;
       }
-      else if (gap < 1.8) {
-        level -= 0.6;
+      else if (gap < 2.6) {
+        level -= 0.5;
       }
-      tile.set(u, v, palette.at(level));
+      tile.set(u, v, palette.mix(level));
     });
   };
 }
@@ -148,7 +170,7 @@ export function speckledStone(
 
       return;
     }
-    tile.set(u, v, palette.at(2 + bevel(u, v) + (tile.noise(u, v, 6) - 0.5)));
+    tile.set(u, v, palette.at(2 + bevel(tile, u, v) + (tile.noise(u, v, 6) - 0.5)));
   });
 }
 
@@ -156,6 +178,7 @@ export function speckledStone(
  * +1 on the tile's top and left edges, -1 on its bottom and right edges.
  */
 function bevel(
+  { size }: TileCanvas,
   u: number,
   v: number
 ): number {
@@ -163,7 +186,7 @@ function bevel(
     return 1;
   }
 
-  return u === TILE_SIZE - 1 || v === TILE_SIZE - 1 ? -1 : 0;
+  return u === size - 1 || v === size - 1 ? -1 : 0;
 }
 
 /**
@@ -177,7 +200,7 @@ export function metal(
   return (tile) => tile.each((u, v) => {
     const glint = Math.abs(u + v - 12) < 1.5 ? 1 : 0;
     const gradient = 3 - v / 8;
-    tile.set(u, v, palette.at(Math.min(top, gradient + glint + bevel(u, v) * 1.5)));
+    tile.set(u, v, palette.at(Math.min(top, gradient + glint + bevel(tile, u, v) * 1.5)));
   });
 }
 
@@ -270,22 +293,24 @@ const kAnkh = [
 export function carved(
   palette: Palette
 ): TilePainter {
-  const left = Math.floor((TILE_SIZE - kAnkh[0].length) / 2);
-  const top = Math.floor((TILE_SIZE - kAnkh.length) / 2);
-  function inMotif(u: number, v: number): boolean {
-    return kAnkh[v - top]?.[u - left] === "#";
-  }
+  return (tile) => {
+    const left = Math.floor((tile.size - kAnkh[0].length) / 2);
+    const top = Math.floor((tile.size - kAnkh.length) / 2);
+    function inMotif(u: number, v: number): boolean {
+      return kAnkh[v - top]?.[u - left] === "#";
+    }
 
-  return (tile) => tile.each((u, v) => {
-    let level = 3 + bevel(u, v) + speckle(tile, u, v) * 0.5;
-    if (inMotif(u, v)) {
-      level = 1;
-    }
-    else if (inMotif(u - 1, v) || inMotif(u, v - 1)) {
-      level = palette.size - 1;
-    }
-    tile.set(u, v, palette.at(level));
-  });
+    tile.each((u, v) => {
+      let level = 3 + bevel(tile, u, v) + speckle(tile, u, v) * 0.5;
+      if (inMotif(u, v)) {
+        level = 1;
+      }
+      else if (inMotif(u - 1, v) || inMotif(u, v - 1)) {
+        level = palette.size - 1;
+      }
+      tile.set(u, v, palette.at(level));
+    });
+  };
 }
 
 interface VoronoiSeed {
@@ -299,8 +324,8 @@ function voronoiSeeds(
 ): VoronoiSeed[] {
   return Array.from({ length: count }, (_, index) => {
     return {
-      x: hash(index, 0, 11, tile.seed) * TILE_SIZE,
-      y: hash(index, 0, 12, tile.seed) * TILE_SIZE
+      x: hash(index, 0, 11, tile.seed) * tile.size,
+      y: hash(index, 0, 12, tile.seed) * tile.size
     };
   });
 }
@@ -310,6 +335,7 @@ function voronoiSeeds(
  * the second nearest; a small gap means the pixel lies on a cell border.
  */
 function voronoi(
+  { size }: TileCanvas,
   seeds: VoronoiSeed[],
   u: number,
   v: number
@@ -319,8 +345,8 @@ function voronoi(
   let nearest = 0;
 
   for (const [index, seed] of seeds.entries()) {
-    const dx = torusDelta(u + 0.5 - seed.x);
-    const dy = torusDelta(v + 0.5 - seed.y);
+    const dx = torusDelta(u + 0.5 - seed.x, size);
+    const dy = torusDelta(v + 0.5 - seed.y, size);
     const distance = Math.hypot(dx, dy);
     if (distance < first) {
       second = first;
@@ -336,9 +362,10 @@ function voronoi(
 }
 
 function torusDelta(
-  delta: number
+  delta: number,
+  size: number
 ): number {
-  const half = TILE_SIZE / 2;
+  const half = size / 2;
 
-  return ((delta + half) % TILE_SIZE + TILE_SIZE) % TILE_SIZE - half;
+  return ((delta + half) % size + size) % size - half;
 }

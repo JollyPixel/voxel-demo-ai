@@ -1,19 +1,25 @@
 // Import Third-party Dependencies
 import * as THREE from "three/webgpu";
 import {
+  cameraPosition,
   color,
+  cos,
+  dot,
   float,
-  fract,
   max,
   mix,
+  mx_noise_float,
   normalize,
   positionLocal,
+  positionWorld,
   pow,
-  sin,
+  reflect,
   smoothstep,
   time,
+  transformNormalToView,
   uniform,
   uv,
+  vec2,
   vec3
 } from "three/tsl";
 
@@ -32,6 +38,16 @@ const kCloudCount = 150;
 const kPuffsPerCloud = 6;
 const kCloudSpan = { minX: -250, width: 800 };
 const kCloudDrift = 0.4;
+/**
+ * Ripples on the pools: direction (x, z), wavelength and speed in world
+ * units, and slope. Their sum drives the surface normal.
+ */
+const kWaves = [
+  { direction: [0.8, 0.6], wavelength: 3.1, speed: 1.3, slope: 0.07 },
+  { direction: [-0.55, 0.83], wavelength: 1.9, speed: 1.7, slope: 0.05 },
+  { direction: [0.2, -0.98], wavelength: 1.2, speed: 2.1, slope: 0.035 },
+  { direction: [-0.93, -0.37], wavelength: 0.7, speed: 2.6, slope: 0.025 }
+] as const;
 
 /**
  * Everything drawn outside the voxel engine: water from the zone fixtures, a
@@ -52,7 +68,7 @@ export function createEffects(
   fixtures: Readonly<Fixtures>,
   sunDirection: THREE.Vector3
 ): Effects {
-  const water = createWater(fixtures);
+  const water = createWater(fixtures, sunDirection);
   const clouds = new CloudSea();
 
   const root = new THREE.Group();
@@ -62,7 +78,7 @@ export function createEffects(
     root,
     water,
     clouds: clouds.mesh,
-    sky: createSky(sunDirection),
+    sky: skyColor(normalize(positionLocal), uniform(sunDirection)),
     animate(dt) {
       clouds.drift(dt * kCloudDrift);
     }
@@ -70,13 +86,12 @@ export function createEffects(
 }
 
 function createWater(
-  { pools, waterfalls }: Readonly<Fixtures>
+  { pools, waterfalls }: Readonly<Fixtures>,
+  sunDirection: THREE.Vector3
 ): THREE.Group {
   const group = new THREE.Group();
 
-  const surface = new THREE.MeshLambertNodeMaterial({ transparent: true, opacity: 0.88, emissive: "#062a35" });
-  const ripple = sin(uv().x.mul(40).add(uv().y.mul(23)).add(time.mul(1.6))).mul(sin(uv().y.mul(31).sub(time.mul(1.1))));
-  surface.colorNode = mix(color("#1d6f8c"), color("#6fd3cc"), smoothstep(float(0.35), float(0.95), ripple.mul(0.5).add(0.5)));
+  const surface = createPoolMaterial(uniform(sunDirection));
   for (const { center, width, depth } of pools) {
     const pool = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), surface);
     pool.rotation.x = -Math.PI / 2;
@@ -85,40 +100,105 @@ function createWater(
     group.add(pool);
   }
 
-  const falling = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const streak = fract(uv().y.mul(5).add(time.mul(1.4)).add(sin(uv().x.mul(37)).mul(0.3)));
-  falling.colorNode = mix(color("#3d9fb8"), color("#e6fbff"), smoothstep(float(0.75), float(1), streak));
-  falling.opacityNode = mix(float(0.55), float(0.9), smoothstep(float(0.6), float(1), streak)).mul(smoothstep(float(0), float(0.25), uv().y));
-  const foamMaterial = new THREE.MeshLambertMaterial({ color: "#eefcff", transparent: true, opacity: 0.8 });
+  const falling = createWaterfallMaterial();
   for (const { center: [x, y, z], width, height } of waterfalls) {
     const sheet = new THREE.Mesh(new THREE.PlaneGeometry(width, height), falling);
     sheet.rotation.y = Math.PI / 2;
     sheet.position.set(x, y, z);
-
-    // A flattened puff where the water leaves the lip.
-    const foam = new THREE.Mesh(new THREE.IcosahedronGeometry(width * 0.6, 1), foamMaterial);
-    foam.scale.set(0.6, 0.35, 1);
-    foam.position.set(x, y + height / 2 - 0.3, z);
-    group.add(sheet, foam);
+    group.add(sheet);
   }
 
   return group;
 }
 
 /**
- * Sky colour by view direction: warm haze at the horizon, deep blue overhead
- * and a soft glow around the sun. On the background skybox the local
- * position is the view direction.
+ * Still water: a normal rippled by a few travelling waves, laid out in world
+ * space so every pool and channel shares one scale. Fresnel decides how much
+ * of the sky the surface mirrors and how opaque it looks; the low roughness
+ * turns the sun into a glint.
  */
-function createSky(
-  sunDirection: THREE.Vector3
-): THREE.Node {
-  const direction = normalize(positionLocal);
-  const sun = uniform(sunDirection);
-  const glow = pow(max(direction.dot(sun), 0), float(12)).mul(0.55);
-  const lower = mix(color(SKY.horizon), color(SKY.blue), smoothstep(float(0), float(0.18), direction.y));
-  const gradient = mix(lower, color(SKY.zenith), smoothstep(float(0.18), float(0.7), direction.y));
-  const below = mix(gradient, color(SKY.haze), smoothstep(float(0), float(-0.25), direction.y));
+function createPoolMaterial(
+  sun: THREE.Node<"vec3">
+): THREE.MeshStandardNodeMaterial {
+  const material = new THREE.MeshStandardNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    roughness: 0.08,
+    metalness: 0
+  });
+
+  const position = positionWorld.xz;
+  // A slow wobble keeps the wave crests from lining up.
+  const wobble = mx_noise_float(vec3(position.mul(0.18), time.mul(0.12))).mul(2);
+  let slopeX: THREE.Node<"float"> = float(0);
+  let slopeZ: THREE.Node<"float"> = float(0);
+  for (const { direction: [dx, dz], wavelength, speed, slope } of kWaves) {
+    const k = (Math.PI * 2) / wavelength;
+    const phase = dot(position, vec2(dx, dz))
+      .mul(k)
+      .add(time.mul(speed))
+      .add(wobble);
+    const gradient = cos(phase).mul(slope);
+    slopeX = slopeX.add(gradient.mul(dx));
+    slopeZ = slopeZ.add(gradient.mul(dz));
+  }
+  const normal = normalize(vec3(slopeX.negate(), 1, slopeZ.negate()));
+
+  const view = normalize(cameraPosition.sub(positionWorld));
+  const fresnel = pow(float(1).sub(max(dot(normal, view), 0)), 5).mul(0.9).add(0.06);
+  const mirrored = skyColor(reflect(view.negate(), normal), sun);
+
+  material.normalNode = transformNormalToView(normal);
+  // Crests facing the viewer catch a little more light than the troughs.
+  const crest = dot(vec2(slopeX, slopeZ), view.xz).mul(1.5);
+  material.colorNode = mix(color("#1d7f8c"), color("#0e4556"), fresnel).add(crest.mul(0.12));
+  material.emissiveNode = mirrored.mul(fresnel.add(0.08));
+  material.opacityNode = mix(float(0.84), float(0.97), fresnel);
+
+  return material;
+}
+
+/**
+ * Falling water: streaks of foam stretched along the fall and scrolling
+ * down, thinning at the sides and fading out as the sheet drops into the
+ * clouds.
+ */
+function createWaterfallMaterial(): THREE.MeshBasicNodeMaterial {
+  const material = new THREE.MeshBasicNodeMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    fog: true
+  });
+
+  const flow = positionWorld.y.add(time.mul(9)).mul(0.08);
+  const streaks = mx_noise_float(vec3(positionWorld.z.mul(2.2), flow, time.mul(0.2)))
+    .add(mx_noise_float(vec3(positionWorld.z.mul(5), flow.mul(2.5), 3)).mul(0.5));
+  const foam = smoothstep(float(0.05), float(0.6), streaks);
+  const { x: across, y: along } = uv();
+  const sides = smoothstep(float(0), float(0.18), across).mul(smoothstep(float(1), float(0.82), across));
+  const lip = smoothstep(float(0.985), float(1), along);
+
+  material.colorNode = mix(color("#3f9fb6"), color("#effcff"), max(foam, lip));
+  material.opacityNode = mix(float(0.45), float(0.9), foam).mul(sides).mul(smoothstep(float(0), float(0.45), along));
+
+  return material;
+}
+
+/**
+ * Sky colour for a view direction: warm haze at the horizon, deep blue
+ * overhead and a soft glow around the sun. It paints the background, where
+ * the local position is the view direction, and the pools' reflections.
+ */
+function skyColor(
+  direction: THREE.Node<"vec3">,
+  sun: THREE.Node<"vec3">
+): THREE.Node<"vec3"> {
+  const up = direction.y;
+  const glow = pow(max(dot(direction, sun), 0), float(12)).mul(0.55);
+  const lower = mix(color(SKY.horizon), color(SKY.blue), smoothstep(float(0), float(0.18), up));
+  const gradient = mix(lower, color(SKY.zenith), smoothstep(float(0.18), float(0.7), up));
+  const below = mix(gradient, color(SKY.haze), smoothstep(float(0), float(-0.25), up));
 
   return below.add(vec3(1, 0.85, 0.6).mul(glow));
 }

@@ -2,20 +2,19 @@
 import * as THREE from "three/webgpu";
 import { Runtime } from "@jolly-pixel/runtime";
 import { Control, Controls } from "@jolly-pixel/ui";
-import { OrbitFlyCamera, Systems } from "@jolly-pixel/engine";
+import { OrbitFlyCamera } from "@jolly-pixel/engine";
 import { VoxelRenderer } from "@jolly-pixel/voxel.renderer/plugins/engine/index.ts";
 import { loadTilesets } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import "./style.css";
 import { createBenchmarkPanel } from "./bench/panel.ts";
-import { createTileset, crossShape, LAYERS } from "./blocks/index.ts";
+import { createTileset, LAYERS, surfaceFinish } from "./blocks/index.ts";
 import { Brush } from "./builder/Brush.ts";
-import { readConfig } from "./config.ts";
-import { installAmbientOcclusion } from "./scene/AmbientOcclusion.ts";
+import { AO_STRENGTH, readConfig } from "./config.ts";
 import { createEffects } from "./scene/effects.ts";
+import { installGtao } from "./scene/gtao.ts";
 import { SUN_DIRECTION, configureRendering, createLighting } from "./scene/lighting.ts";
-import { TileFiltering } from "./scene/tileFiltering.ts";
 import { VIEWS } from "./scene/views.ts";
 import { sceneBounds } from "./site.ts";
 import { buildTestPad, buildZones, type ZoneTimings } from "./zones/index.ts";
@@ -35,16 +34,12 @@ const runtime = await Runtime.create("#scene", {
   includePerformanceStats: { mount: true, position: "bottom-right" },
   focusCanvas: false
 });
-if (!(runtime.world.renderer instanceof Systems.ThreeRenderer)) {
-  throw new Error("main: the runtime is expected to render with ThreeRenderer");
-}
-const renderer = runtime.world.renderer.getSource();
+const renderer = runtime.renderer.getSource();
 const scene = runtime.world.sceneManager.getSource();
 configureRendering(renderer, scene, config);
-const ambientOcclusion = installAmbientOcclusion(runtime.world.renderer, config.ao);
 
 const pose = VIEWS[config.view];
-const camera = runtime.world.createActor("camera").addComponent(OrbitFlyCamera, {
+const camera = runtime.world.createActor("camera").addComponentAndGet(OrbitFlyCamera, {
   position: pose,
   yaw: pose.yaw,
   pitch: pose.pitch,
@@ -52,29 +47,24 @@ const camera = runtime.world.createActor("camera").addComponent(OrbitFlyCamera, 
   maxMoveSpeed: 210,
   focusMode: "none"
 });
-const tileFiltering = config.mips ? new TileFiltering(tileset.padded) : null;
+const gtao = installGtao(camera, config.gtao);
 const voxel = runtime.world.createActor("terrain").addComponentAndGet(VoxelRenderer, {
-  focus: camera.object3D,
+  focus: camera.actor.object3D,
   greedy: config.greedy,
   chunkSize: 32,
   layers: [...LAYERS],
   blocks: tileset.blocks,
-  shapes: [crossShape],
   tilesets: await loadTilesets([tileset.definition]),
   material: "standard",
   alphaTest: 0.35,
   rebuildBudgetMs: 12,
+  castShadow: config.shadows,
+  receiveShadow: config.shadows,
+  ambientOcclusion: config.ao ? AO_STRENGTH : 0,
+  tileMinification: config.mips ? "average" : "nearest",
   materialCustomizer: (material, _tilesetId, surface) => {
     if (material instanceof THREE.MeshStandardMaterial) {
-      material.roughness = 0.89;
-      material.metalness = 0;
-    }
-    if (surface.alphaMode === "mask") {
-      material.side = THREE.DoubleSide;
-    }
-    // Materials are built lazily while meshing, after `voxel` exists.
-    if (tileFiltering && voxel.engine.greedy) {
-      tileFiltering.apply(material, surface);
+      Object.assign(material, surfaceFinish(surface.materialGroup));
     }
   }
 });
@@ -83,9 +73,9 @@ runtime.metrics.addSource(engine.inspector);
 await runtime.load({ skipLoadingScreen: true });
 
 const brush = Brush.forWorld(engine.world);
-const timings = config.pad ?
+const timings = engine.world.transaction(() => (config.pad ?
   { Pad: measure(() => buildTestPad(brush)) } :
-  buildZones(brush, config);
+  buildZones(brush, config)));
 
 const effects = createEffects(brush.fixtures, SUN_DIRECTION);
 effects.root.visible = !config.pad;
@@ -95,7 +85,7 @@ const lighting = createLighting(renderer, scene, {
   shadows: config.shadows,
   lights: brush.fixtures.lights,
   bounds: sceneBounds(config.copies),
-  chunks: engine.root
+  chunks: engine
 });
 
 const chunkCount = [...engine.world.getAllChunks()].length;
@@ -108,7 +98,7 @@ loading.remove();
 const panel = createBenchmarkPanel({
   engine,
   lighting,
-  ambientOcclusion,
+  gtao,
   effects,
   build: { seed: config.seed, copies: config.copies, timings, meshMs, chunkCount }
 });
@@ -118,6 +108,10 @@ logBuild(timings);
 function startFrameLoop(): void {
   let last = performance.now();
   let frames = 0;
+  let drawCalls = 0;
+  runtime.renderer.on("draw", ({ source }) => {
+    drawCalls = source.info.render.drawCalls;
+  });
 
   function frame(now: number): void {
     effects.animate(Math.min(0.1, (now - last) / 1000));
@@ -125,7 +119,7 @@ function startFrameLoop(): void {
 
     if (++frames % kStatsInterval === 0) {
       const { fps = 0, ms = 0 } = runtime.stats.snapshot();
-      panel.update({ fps, frameMs: ms, mesh: engine.inspector.mesh.stats, info: renderer.info });
+      panel.update({ fps, frameMs: ms, mesh: engine.inspector.mesh.stats, info: renderer.info, drawCalls });
     }
     requestAnimationFrame(frame);
   }

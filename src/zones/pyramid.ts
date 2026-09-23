@@ -4,17 +4,16 @@ import type { Brush } from "../builder/Brush.ts";
 import { FloatingIsland, GROUND } from "../builder/FloatingIsland.ts";
 import { outerCorner, rising } from "../builder/orientation.ts";
 import {
+  acacia,
   basin,
   brazier,
   broadleafTree,
   column,
-  flowerBed,
+  hedge,
   obelisk,
-  palm,
   pyramidion,
   sarcophagus
 } from "../builder/prefabs.ts";
-import { hash } from "../utils/noise.ts";
 import type { Random } from "../utils/random.ts";
 
 interface Tier {
@@ -24,22 +23,27 @@ interface Tier {
 }
 
 // CONSTANTS
-const kPlinthHalf = 34;
 const kFloor = GROUND + 1;
 const kWall = 3;
-const kTiers: readonly Tier[] = [
-  { half: 30, bottom: 22, top: 28 },
-  { half: 25, bottom: 29, top: 33 },
-  { half: 20, bottom: 34, top: 38 },
-  { half: 15, bottom: 39, top: 43 },
-  { half: 10, bottom: 44, top: 48 }
-];
+/**
+ * Seven tiers stepping in by five voxels: a tall base course, then five
+ * voxels each.
+ */
+const kTiers: readonly Tier[] = Array.from({ length: 7 }, (_, index) => {
+  return {
+    half: 48 - index * 5,
+    bottom: index === 0 ? GROUND + 2 : GROUND + 4 + index * 5,
+    top: GROUND + 8 + index * 5
+  };
+});
+const kPlinthHalf = kTiers[0].half + 4;
 const kSummit = kTiers[kTiers.length - 1];
 /**
- * The twin west flights climb one voxel per voxel: y = x + kFlightOffset.
+ * The twin west flights climb one voxel per voxel, y = x + kFlightOffset,
+ * and land on the summit's west edge.
  */
-const kFlightOffset = 59;
-const kFlightLanes = [[6, 10], [-10, -6]] as const;
+const kFlightOffset = kSummit.top + kSummit.half + 1;
+const kFlightLanes = [[7, 12], [-12, -7]] as const;
 
 /**
  * Stepped tomb centred on its origin, after inspiration v3: banded tiers with
@@ -52,10 +56,10 @@ export function buildPyramid(
   random: Random
 ): void {
   const island = new FloatingIsland({
-    radius: 58,
-    depth: 38,
+    radius: 80,
+    depth: 48,
     surface: "sand",
-    flatRadius: 50,
+    flatRadius: 72,
     seed: Math.floor(random() * 2 ** 31)
   });
   island.build(b);
@@ -67,7 +71,7 @@ export function buildPyramid(
   for (const [index, tier] of kTiers.entries()) {
     buildCornice(b, tier);
     if (index > 0) {
-      buildTerrace(b, kTiers[index - 1], tier, random);
+      buildTerrace(b, kTiers[index - 1], tier, index % 2 === 1);
     }
   }
   buildFlights(b);
@@ -169,14 +173,14 @@ function buildCornice(
 
 /**
  * The walk around `upper`, on the roof of `lower`: a parapet on the outer
- * edge, a planted strip against the upper wall, trees on the corners and
- * vines hanging under the upper cornice.
+ * edge, hedges against the upper wall and, when `planted`, trees on the
+ * corners.
  */
 function buildTerrace(
   b: Brush,
   lower: Tier,
   upper: Tier,
-  random: Random
+  planted: boolean
 ): void {
   const y = upper.bottom;
   const outer = lower.half;
@@ -194,24 +198,17 @@ function buildTerrace(
         if (onFlight(x0, z0) || onFlight(x1, z1)) {
           continue;
         }
-        flowerBed(b, [Math.min(x0, x1), y, Math.min(z0, z1)], [Math.max(x0, x1), y, Math.max(z0, z1)], random);
+        hedge(b, [Math.min(x0, x1), y, Math.min(z0, z1)], [Math.max(x0, x1), y, Math.max(z0, z1)]);
       }
     }
   }
   const corner = inner + 2;
-  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-    if (upper.half >= 20) {
+  for (const [sx, sz] of planted ? [[1, 1], [1, -1], [-1, 1], [-1, -1]] : []) {
+    if (upper.half >= 30) {
       broadleafTree(b, [sx * corner, y, sz * corner], 2);
     }
     else {
-      palm(b, [sx * corner, y, sz * corner], 5);
-    }
-  }
-  for (let i = -upper.half; i <= upper.half; i++) {
-    for (const [x, z] of [[inner, i], [-inner, i], [i, inner], [i, -inner]]) {
-      if (hash(x, upper.top, z, 21) > 0.7 && !onFlight(x, z)) {
-        b.put([x, upper.top - 1, z], B.roots);
-      }
+      acacia(b, [sx * corner, y, sz * corner], 5);
     }
   }
 }
@@ -272,36 +269,33 @@ function buildDoorway(
 
 /**
  * The atrium: a flagstone floor under the stepped hollow of the tiers, a
- * palm court with a pool under the oculus, colonnades, and a tomb hall on
+ * tree court with a pool under the oculus, colonnades, and a tomb hall on
  * either side lit by braziers.
  */
 function buildInterior(
   b: Brush,
   random: Random
 ): void {
-  basin(b, [0, kFloor, 0], 3);
-  for (const [x, z] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) {
-    palm(b, [x, kFloor + 1, z], 7);
+  basin(b, [0, kFloor, 0], 4);
+  for (const [x, z] of [[-8, -8], [8, -8], [-8, 8], [8, 8]]) {
+    acacia(b, [x, kFloor + 1, z], 7);
   }
-  for (const [x, z] of [[-5, 0], [5, 0], [0, -5], [0, 5]]) {
-    b.put([x, kFloor + 1, z], B.papyrus);
-  }
-  for (let x = -21; x <= 21; x += 6) {
-    for (const z of [-10, 10]) {
-      column(b, [x, kFloor + 1, z], { height: 10, stone: B.tombGranite });
+  for (let x = -36; x <= 36; x += 6) {
+    for (const z of [-14, 14]) {
+      column(b, [x, kFloor + 1, z], { height: 12, stone: B.tombGranite });
     }
   }
-  for (const z of [-19, 19]) {
-    for (const x of [-15, -5, 5, 15]) {
+  for (const z of [-28, 28]) {
+    for (const x of [-30, -18, -6, 6, 18, 30]) {
       sarcophagus(b, [x, kFloor + 1, z]);
     }
-    for (const x of [-22, 22]) {
+    for (const x of [-38, 38]) {
       brazier(b, [x, kFloor + 1, z], true);
     }
   }
-  for (let i = 0; i < 6; i++) {
-    const x = Math.floor(random() * 40) - 20;
-    b.put([x, kFloor + 1, random() > 0.5 ? 24 : -24], B.gold.slabBottom);
+  for (let i = 0; i < 10; i++) {
+    const x = Math.floor(random() * 64) - 32;
+    b.put([x, kFloor + 1, random() > 0.5 ? 36 : -36], B.gold.slabBottom);
   }
 }
 
@@ -323,7 +317,7 @@ function buildShrine(
 
 /**
  * A pool on the east plinth feeding a channel that runs to the rim and
- * falls off into the clouds, among palms on the sand.
+ * falls off into the clouds, among acacias on the sand.
  */
 function buildOasis(
   b: Brush,
@@ -343,15 +337,15 @@ function buildOasis(
   b.waterfall([rim + 0.6, GROUND - 22, 0], 3, 44);
 
   for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-    obelisk(b, [sx * 40, GROUND, sz * 40], 12);
+    obelisk(b, [sx * 58, GROUND, sz * 40], 14);
   }
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 8; i++) {
     const angle = random() * Math.PI * 2;
-    const distance = 40 + random() * 12;
+    const distance = 60 + random() * 12;
     const [x, z] = [Math.round(Math.cos(angle) * distance), Math.round(Math.sin(angle) * distance)];
     const surface = island.surfaceAt(x, z);
     if (surface !== undefined && Math.abs(z) > 3 && ring(x, z) > kPlinthHalf + 2) {
-      palm(b, [x, surface, z], 6 + Math.floor(random() * 3));
+      acacia(b, [x, surface, z], 5 + Math.floor(random() * 3));
     }
   }
 }

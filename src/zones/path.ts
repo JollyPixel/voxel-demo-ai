@@ -1,157 +1,217 @@
 // Import Internal Dependencies
-import { B } from "../blocks/index.ts";
+import { B, type Block } from "../blocks/index.ts";
 import type { Brush } from "../builder/Brush.ts";
 import { FloatingIsland, GROUND } from "../builder/FloatingIsland.ts";
 import {
-  colonnade,
-  flowerBed,
   monumentalArch,
-  obelisk,
-  palm
+  obelisk
 } from "../builder/prefabs.ts";
 import { SITE } from "../site.ts";
 import type { Random } from "../utils/random.ts";
 
 // CONSTANTS
 const kDeck = GROUND;
-const kHalfWidth = 5;
+const kHalfWidth = 8;
+/**
+ * The round garden halfway along, on its own islet: its centre in local x
+ * and its radius.
+ */
+const kGarden = { x: 85, radius: 16 };
+/**
+ * Pier centres in local x. The platform (x = 0), the garden islet and the
+ * pyramid's plinth (x = `SITE.path.length`) are the other supports.
+ */
+const kPiers = [22, 50, 120, 148];
+const kPierHalf = { x: 3, z: kHalfWidth + 5 };
+/**
+ * How far the piers hang under the deck before their foot islet.
+ */
+const kPierDepth = 30;
 
-interface PathSection {
-  kind: "arch" | "garden";
+interface Span {
   from: number;
   to: number;
 }
 
-interface Garden {
-  section: PathSection;
-  islet: FloatingIsland;
-}
-
 /**
- * Alternating arch and garden sections, in local x.
- */
-const kSections: PathSection[] = [
-  { kind: "arch", from: 2, to: 16 },
-  { kind: "garden", from: 17, to: 45 },
-  { kind: "arch", from: 46, to: 60 },
-  { kind: "garden", from: 61, to: 89 },
-  { kind: "arch", from: 90, to: 108 }
-];
-
-/**
- * An 11-wide causeway from the platform to the pyramid. Arch sections are
- * bridges with arched undersides, entered through a monumental arch between
- * colonnades; garden sections rest on small floating islets around a water
- * channel.
+ * A viaduct from the platform to the pyramid, after the corridor
+ * inspiration: tall piers hanging into small floating islets, semicircular
+ * arches between them under a crenellated parapet, and a monumental arch
+ * over the deck on every pier. Halfway along, the deck opens onto a round
+ * walled garden.
  */
 export function buildPath(
   b: Brush,
   random: Random
 ): void {
-  const gardens: Garden[] = kSections.filter(({ kind }) => kind === "garden").map((section) => {
-    const islet = new FloatingIsland({
-      radius: (section.to - section.from) / 2 + 1,
-      depth: 16,
-      surface: "grass",
-      flatRadius: 6,
-      seed: Math.floor(random() * 2 ** 31)
-    });
-
-    return { section, islet };
-  });
-  // The islets go first: the deck cuts through their tops.
-  for (const { section, islet } of gardens) {
-    islet.build(b.translated([centreOf(section), 0, 0]));
+  const { length } = SITE.path;
+  const supports = [
+    ...kPiers.map((x) => [x - kPierHalf.x - 1, x + kPierHalf.x + 1]),
+    [kGarden.x - kGarden.radius + 1, kGarden.x + kGarden.radius - 1]
+  ].sort(([a], [b]) => a - b);
+  const faces = [0, ...supports.flat(), length];
+  const spans: Span[] = [];
+  for (let index = 0; index < faces.length; index += 2) {
+    spans.push({ from: faces[index], to: faces[index + 1] });
   }
 
+  for (const x of kPiers) {
+    buildPier(b, x, random);
+  }
+  for (const span of spans) {
+    buildSpan(b, span);
+  }
+  buildGarden(b, random);
   buildDeck(b);
-  for (const section of kSections.filter(({ kind }) => kind === "arch")) {
-    buildArchSection(b, section);
+  for (const x of kPiers) {
+    monumentalArch(b, [x, kDeck, 0], kHalfWidth + 3);
   }
-  for (const garden of gardens) {
-    buildGardenSection(b, garden, random);
-  }
-}
-
-function centreOf(
-  { from, to }: PathSection
-): number {
-  return Math.round((from + to) / 2);
 }
 
 /**
- * Two courses of ashlar under a kerbed walkway with a low parapet.
+ * A pier from the deck down to a floating islet: frieze bands every eight
+ * courses and limestone pilasters on its long faces, narrowing in two steps
+ * towards its foot.
+ */
+function buildPier(
+  b: Brush,
+  x: number,
+  random: Random
+): void {
+  const bottom = kDeck - kPierDepth;
+
+  b.fill([x - kPierHalf.x, bottom, -kPierHalf.z], [x + kPierHalf.x, kDeck - 1, kPierHalf.z], (px, y, z) => {
+    let inset = 0;
+    if (y < bottom + 8) {
+      inset = 2;
+    }
+    else if (y < bottom + 16) {
+      inset = 1;
+    }
+    if (Math.abs(px - x) > kPierHalf.x - inset || Math.abs(z) > kPierHalf.z - inset * 2) {
+      return undefined;
+    }
+    if ((kDeck - y) % 8 === 4) {
+      return B.trim;
+    }
+    const face = Math.abs(px - x) === kPierHalf.x - inset;
+
+    return face && Math.abs(z) % 4 === 0 ? B.limestone : B.ashlar;
+  });
+
+  const islet = new FloatingIsland({
+    radius: 9,
+    depth: 12,
+    surface: "grass",
+    flatRadius: 5,
+    seed: Math.floor(random() * 2 ** 31)
+  });
+  islet.build(b.translated([x, bottom - GROUND, 0]));
+}
+
+/**
+ * The solid between two supports: a semicircular intrados edged by a frieze
+ * line and a limestone ring, with sandstone spandrels above it.
+ */
+function buildSpan(
+  b: Brush,
+  { from, to }: Span
+): void {
+  const radius = (to - from) / 2;
+  const centre = (from + to) / 2;
+  const springLine = kDeck - 3 - radius;
+
+  for (let x = from; x <= to; x++) {
+    const d = Math.abs(x - centre);
+    const intrados = Math.round(springLine + Math.sqrt(Math.max(0, radius * radius - d * d)));
+    for (let y = intrados; y <= kDeck - 3; y++) {
+      const ring = y - intrados;
+      let block: Block = B.sandstone;
+      if (ring === 0) {
+        block = B.trim;
+      }
+      else if (ring < 3) {
+        block = B.limestone;
+      }
+      b.box([x, y, -kHalfWidth], [x, y, kHalfWidth], block);
+    }
+  }
+}
+
+/**
+ * Two courses of ashlar under a flagstone walk, edged by a frieze course
+ * and a crenellated limestone parapet, on either side of the garden.
  */
 function buildDeck(
   b: Brush
 ): void {
   const { length } = SITE.path;
+  const segments = [
+    [0, kGarden.x - kGarden.radius + 2],
+    [kGarden.x + kGarden.radius - 2, length]
+  ];
 
-  b.clear([0, kDeck - 2, -kHalfWidth], [length, kDeck + 8, kHalfWidth]);
-  b.box([0, kDeck - 2, -kHalfWidth], [length, kDeck - 1, kHalfWidth], B.ashlar);
-  for (const z of [-kHalfWidth, kHalfWidth]) {
-    b.box([0, kDeck, z], [length, kDeck, z], B.trim);
-    b.box([0, kDeck + 1, z], [length, kDeck + 1, z], B.limestone.slabBottom);
+  for (const [from, to] of segments) {
+    b.clear([from, kDeck, -kHalfWidth], [to, kDeck + 8, kHalfWidth]);
+    b.box([from, kDeck - 2, -kHalfWidth], [to, kDeck - 1, kHalfWidth], B.ashlar);
+    b.box([from, kDeck, -kHalfWidth + 1], [to, kDeck, kHalfWidth - 1], B.flagstone);
+    for (const z of [-kHalfWidth, kHalfWidth]) {
+      b.box([from, kDeck, z], [to, kDeck, z], B.trim);
+      b.box([from, kDeck + 1, z], [to, kDeck + 1, z], B.limestone);
+      for (let x = from + 1; x < to; x += 3) {
+        b.put([x, kDeck + 2, z], B.limestone.slabBottom);
+      }
+    }
   }
 }
 
-function buildArchSection(
+/**
+ * A round walled garden on its own islet: a ring walk around a lawn with an
+ * obelisk on a small plaza, paths out to the parapet through a hedge ring,
+ * and the parapet open where the deck comes in.
+ */
+function buildGarden(
   b: Brush,
-  { from, to }: PathSection
-): void {
-  // An arched underside: deep at the section ends, thin at mid-span.
-  for (let x = from - 1; x <= to + 1; x++) {
-    const t = (x - from + 1) / (to - from + 2);
-    const depth = 1 + Math.round(6 * (1 - Math.sin(Math.PI * t)));
-    b.box([x, kDeck - 2 - depth, -kHalfWidth + 1], [x, kDeck - 3, kHalfWidth - 1], B.ashlar);
-    b.box([x, kDeck - 3, -kHalfWidth], [x, kDeck - 3, kHalfWidth], B.trim);
-  }
-
-  b.box([from, kDeck, -kHalfWidth + 1], [to, kDeck, kHalfWidth - 1], B.flagstone);
-  for (let x = from + 1; x < to; x += 3) {
-    b.put([x, kDeck, 0], B.faience);
-  }
-
-  // Landing under the arch's pylons, which stand beyond the deck edges.
-  const arch = from + 2;
-  b.box([arch - 2, kDeck - 3, -9], [arch + 2, kDeck - 1, 9], B.ashlar);
-  monumentalArch(b, [arch, kDeck, 0]);
-
-  colonnade(b, [arch + 5, kDeck + 1, -kHalfWidth + 1], to - 1, 7);
-  colonnade(b, [arch + 5, kDeck + 1, kHalfWidth - 1], to - 1, 7);
-}
-
-function buildGardenSection(
-  b: Brush,
-  { section, islet }: Garden,
   random: Random
 ): void {
-  const { from, to } = section;
-  const centre = centreOf(section);
-  function onIslet(x: number, z: number): [number, number, number] {
-    return [x, islet.surfaceAt(x - centre, z) ?? kDeck, z];
-  }
+  const { x: cx, radius } = kGarden;
+  const islet = new FloatingIsland({
+    radius,
+    depth: 22,
+    roughness: 0,
+    surface: "grass",
+    flatRadius: radius,
+    seed: Math.floor(random() * 2 ** 31)
+  });
+  islet.build(b.translated([cx, 0, 0]));
 
-  b.box([from, kDeck, -kHalfWidth + 1], [to, kDeck, kHalfWidth - 1], B.grass);
-
-  // A sunken channel between limestone kerbs.
-  b.box([from, kDeck, -2], [to, kDeck, 2], B.limestone);
-  b.clear([from + 1, kDeck, -1], [to - 1, kDeck, 1]);
-  b.box([from + 1, kDeck - 1, -1], [to - 1, kDeck - 1, 1], B.faience);
-  b.pool([(from + to) / 2, kDeck + 0.8, 0], to - from - 1, 3);
-
-  for (let x = from + 1; x + 3 < to; x += 5) {
-    for (const [z0, z1] of [[-4, -3], [3, 4]]) {
-      flowerBed(b, [x, kDeck + 1, z0], [x + 3, kDeck + 1, z1], random);
+  const reach = radius + 1;
+  b.fill([cx - reach, kDeck, -reach], [cx + reach, kDeck + 2, reach], (x, y, z) => {
+    const dx = x - cx;
+    const r = Math.hypot(dx, z);
+    if (r >= radius) {
+      return undefined;
     }
-    b.put([x + 4, kDeck + 1, -3], B.papyrus);
-    b.put([x + 4, kDeck + 1, 3], B.papyrus);
-  }
-  for (let side = 1, x = from + 3; x < to - 2; side = -side, x += 7) {
-    palm(b, onIslet(x, side * 8), 6 + Math.floor(random() * 3));
-  }
-  for (const x of [from + 1, to - 1]) {
-    obelisk(b, onIslet(x, -8), 8);
-    obelisk(b, onIslet(x, 8), 8);
-  }
+    const entrance = Math.abs(z) < kHalfWidth && Math.abs(dx) > radius - 4;
+    if (r >= radius - 1) {
+      if (entrance) {
+        return y === kDeck ? B.flagstone : undefined;
+      }
+      if (y === kDeck) {
+        return B.trim;
+      }
+
+      return y === kDeck + 1 || Math.round(Math.atan2(z, dx) * radius) % 3 === 0 ? B.limestone : undefined;
+    }
+    // Paths cross the outer lawn only; inside the ring walk, a small plaza.
+    const crossing = r >= 8 && (Math.abs(z) <= 2 || Math.abs(dx) <= 1);
+    const paved = crossing || (r >= 6 && r < 8) || r < 3 || entrance;
+    if (y === kDeck) {
+      return paved ? B.flagstone : B.grass;
+    }
+    const hedgeRing = r >= 11 && r < 12.5;
+
+    return y === kDeck + 1 && hedgeRing && !paved ? B.leaves : undefined;
+  });
+  obelisk(b, [cx, kDeck + 1, 0], 12);
 }

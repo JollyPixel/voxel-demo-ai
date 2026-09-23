@@ -21,9 +21,9 @@ export interface LightingOptions {
    */
   bounds: Bounds;
   /**
-   * Parent of the voxel chunk meshes, which need shadow flags of their own.
+   * The voxel view, whose chunk meshes carry shadow flags of their own.
    */
-  chunks: THREE.Object3D;
+  chunks: { castShadow: boolean; receiveShadow: boolean; };
 }
 
 export interface Lighting {
@@ -39,8 +39,6 @@ export function configureRendering(
   scene: THREE.Scene,
   options: { shadows: boolean; }
 ): void {
-  // The engine defaults to PCFSoftShadowMap, which WebGPU no longer supports (F-06).
-  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.enabled = options.shadows;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -65,19 +63,11 @@ export function createLighting(
     scene.add(light);
   }
 
-  // Chunk meshes come and go as the engine remeshes (F-02).
-  function applyShadows(object: THREE.Object3D): void {
-    if (object instanceof THREE.Mesh) {
-      object.castShadow = sun.castShadow;
-      object.receiveShadow = sun.castShadow;
-    }
-  }
-  options.chunks.addEventListener("childadded", ({ child }) => applyShadows(child));
-
   function setShadows(enabled: boolean): void {
     sun.castShadow = enabled;
     renderer.shadowMap.enabled = enabled;
-    options.chunks.traverse(applyShadows);
+    options.chunks.castShadow = enabled;
+    options.chunks.receiveShadow = enabled;
   }
   setShadows(options.shadows);
 

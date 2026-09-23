@@ -1,6 +1,6 @@
 # Floating Tomb
 
-An Egypt-themed floating voxel diorama and performance demo for the JollyPixel voxel renderer. The scene includes a radial garden island, an alternating colonnade and garden bridge, and a stepped tomb with an interior courtyard, galleries, and sarcophagi.
+An Egypt-themed floating voxel diorama and performance demo for the JollyPixel voxel renderer. The scene includes a radial garden island with a giant tree, an arched viaduct with a round garden halfway along, and a seven-tier stepped tomb with an interior courtyard, galleries, and sarcophagi.
 
 ## Run
 
@@ -23,12 +23,13 @@ The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performan
 | `greedy` | `?greedy=0` | Disable greedy meshing |
 | `shadows` | `?shadows=0` | Disable sunlight shadows |
 | `copies` | `?copies=4` | Tile up to four scene copies for stress testing |
-| `ao` | `?ao=0` | Disable screen-space ambient occlusion (GTAO) |
-| `mips` | `?mips=0` | Sample tiles at full resolution only, as the engine does (distant blocks sparkle) |
-| `view` | `?view=pyramid` | Start at `overview`, `platform`, `path`, `arch`, `pyramid`, `interior`, or `waterfall` |
+| `ao` | `?ao=0` | Disable the ambient occlusion baked into chunk vertices |
+| `gtao` | `?gtao=1` | Add screen-space ambient occlusion (GTAO) as a camera post-process |
+| `mips` | `?mips=0` | Sample tiles with nearest filtering only, without the engine's distant-tile averaging (distant blocks sparkle) |
+| `view` | `?view=pyramid` | Start at `overview`, `platform`, `garden`, `tree`, `path`, `arch`, `rotunda`, `pyramid`, `interior`, or `waterfall` |
 | `pad` | `?pad=1` | Display the shape and orientation test pad |
 
-The pane shows construction time by zone, total voxel count, chunk and triangle counts, draw calls, geometry and texture counts, and frame time. It also toggles shadows, ambient occlusion, meshing, layers, effects, view distance, and inspector overlays. The save/load button reports round trip time and JSON size.
+The pane shows construction time by zone, total voxel count, chunk and triangle counts, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, meshing, layers, effects, view distance, and inspector overlays. The save/load button reports round trip time and JSON size.
 
 ## Check
 

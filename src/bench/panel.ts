@@ -10,7 +10,8 @@ import type * as THREE from "three/webgpu";
 
 // Import Internal Dependencies
 import { LAYERS } from "../blocks/index.ts";
-import type { AmbientOcclusion } from "../scene/AmbientOcclusion.ts";
+import { AO_STRENGTH } from "../config.ts";
+import type { Gtao } from "../scene/gtao.ts";
 import type { Effects } from "../scene/effects.ts";
 import type { Lighting } from "../scene/lighting.ts";
 import type { ZoneTimings } from "../zones/index.ts";
@@ -29,7 +30,7 @@ export interface BuildReport {
 export interface PanelContext {
   engine: VoxelEngine;
   lighting: Lighting;
-  ambientOcclusion: AmbientOcclusion;
+  gtao: Gtao;
   effects: Effects;
   build: BuildReport;
 }
@@ -39,6 +40,11 @@ export interface FrameSample {
   frameMs: number;
   mesh: { chunks: number; vertices: number; };
   info: THREE.WebGPURenderer["info"];
+  /**
+   * Latched on the renderer's "draw": `info.render` resets on every
+   * animation-loop tick, including the ones the frame cap skips.
+   */
+  drawCalls: number;
 }
 
 /**
@@ -105,12 +111,12 @@ export function createBenchmarkPanel(
   dock.sync();
 
   return {
-    update({ fps, frameMs, mesh, info }) {
+    update({ fps, frameMs, mesh, info, drawCalls }) {
       stats.fps = Math.round(fps);
       stats.frameMs = Math.round(frameMs * 10) / 10;
       stats.meshed = mesh.chunks;
       stats.triangles = Math.round(mesh.vertices / 3);
-      stats.drawCalls = info.render.drawCalls;
+      stats.drawCalls = drawCalls;
       stats.geometries = info.memory.geometries;
       stats.textures = info.memory.textures;
       // Read by tests/benchmark.mjs.
@@ -122,11 +128,12 @@ export function createBenchmarkPanel(
 
 function addRenderToggles(
   pane: Pane,
-  { engine, lighting, ambientOcclusion, effects }: PanelContext
+  { engine, lighting, gtao, effects }: PanelContext
 ): void {
   const options = {
     shadows: lighting.shadows,
-    occlusion: ambientOcclusion.enabled,
+    occlusion: engine.ambientOcclusion > 0,
+    gtao: gtao.enabled,
     greedy: engine.greedy,
     water: true,
     clouds: true,
@@ -137,7 +144,10 @@ function addRenderToggles(
 
   const render = pane.addFolder({ title: "Render" });
   render.addBinding(options, "shadows").on("change", ({ value }) => lighting.setShadows(value));
-  render.addBinding(options, "occlusion", { label: "ambient occlusion" }).on("change", ({ value }) => ambientOcclusion.setEnabled(value));
+  render.addBinding(options, "occlusion", { label: "ambient occlusion" }).on("change", ({ value }) => {
+    engine.ambientOcclusion = value ? AO_STRENGTH : 0;
+  });
+  render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => gtao.setEnabled(value));
   render.addBinding(options, "greedy").on("change", ({ value }) => {
     engine.greedy = value;
     engine.markAllChunksDirty("toggle");

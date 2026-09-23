@@ -1,7 +1,6 @@
 // Import Internal Dependencies
 import { B, type Block } from "../blocks/index.ts";
 import { hash } from "../utils/noise.ts";
-import type { Random } from "../utils/random.ts";
 import type { Brush, Vec3 } from "./Brush.ts";
 import {
   DIRECTIONS,
@@ -11,7 +10,6 @@ import {
 } from "./orientation.ts";
 
 // CONSTANTS
-const kFlowers = [B.roseFlower, B.lilacFlower, B.sunFlower];
 const kDiagonals = [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const;
 
 export interface ColumnOptions {
@@ -21,13 +19,13 @@ export interface ColumnOptions {
    */
   height?: number;
   /**
-   * @default B.limestone
+   * @default B.fluted
    */
   stone?: Block;
 }
 
 /**
- * Egyptian column: a slab base, a banded shaft and a flared papyrus capital
+ * Egyptian column: a slab base, a fluted shaft and a flared papyrus capital
  * under a square abacus.
  */
 export function column(
@@ -35,7 +33,7 @@ export function column(
   [x, y, z]: Vec3,
   options: ColumnOptions = {}
 ): void {
-  const { height = 8, stone = B.limestone } = options;
+  const { height = 8, stone = B.fluted } = options;
   const abacus = y + height - 1;
   const capital = abacus - 1;
 
@@ -60,26 +58,6 @@ function opposite(
   const opposites: Record<Direction, Direction> = { N: "S", S: "N", E: "W", W: "E" };
 
   return opposites[direction];
-}
-
-/**
- * Columns every five voxels along x under an architrave, a frieze and a
- * slab cornice.
- */
-export function colonnade(
-  b: Brush,
-  [x0, y, z]: Vec3,
-  x1: number,
-  height = 8
-): void {
-  const last = x0 + Math.floor((x1 - x0) / 5) * 5;
-  for (let x = x0; x <= last; x += 5) {
-    column(b, [x, y, z], { height });
-  }
-  const top = y + height;
-  b.box([x0 - 1, top, z], [last + 1, top, z], B.limestone);
-  b.box([x0 - 1, top + 1, z], [last + 1, top + 1, z], B.trim);
-  b.box([x0 - 1, top + 2, z - 1], [last + 1, top + 2, z + 1], B.limestone.slabBottom);
 }
 
 /**
@@ -218,32 +196,65 @@ export function obelisk(
 }
 
 /**
- * Date palm: a trunk leaning a little, crowned by drooping fronds.
+ * Umbrella acacia: a trunk forking into two or three limbs that lean
+ * outwards, each carrying a pad of a broad, flat-topped canopy.
  */
-export function palm(
+export function acacia(
   b: Brush,
   [x, y, z]: Vec3,
-  height = 7
+  height = 6
 ): void {
-  const [leanX, leanZ] = Object.values(DIRECTIONS)[Math.floor(hash(x, y, z, 5) * 4)];
-  let [tx, tz] = [x, z];
+  const fork = y + Math.floor(height * 0.45);
+  const limbs = hash(x, y, z, 7) > 0.5 ? 3 : 2;
+  const turn = hash(x, y, z, 8) * Math.PI * 2;
 
-  for (let dy = 0; dy < height; dy++) {
-    if (dy === Math.floor(height * 0.6)) {
-      [tx, tz] = [tx + leanX, tz + leanZ];
-    }
-    b.put([tx, y + dy, tz], B.palmTrunk.poleY);
+  b.box([x, y, z], [x, fork, z], B.trunk);
+  for (let limb = 0; limb < limbs; limb++) {
+    const angle = turn + (limb / limbs) * Math.PI * 2;
+    const reach = 2 + hash(x, limb, z, 9) * 1.5;
+    const tip: Vec3 = [
+      x + Math.round(Math.cos(angle) * reach),
+      y + height - (limb % 2),
+      z + Math.round(Math.sin(angle) * reach)
+    ];
+    canopyPad(b, tip, 3 + (limb === 0 ? 1 : 0));
+    limbBetween(b, [x, fork, z], tip);
   }
-  const crown = y + height;
-  b.put([tx, crown, tz], B.leaves);
-  for (const [dx, dz] of [...Object.values(DIRECTIONS), ...kDiagonals]) {
-    b.put([tx + dx, crown, tz + dz], B.frond);
+}
+
+/**
+ * Trunk voxels from `from` to `to`, each step on the axis with the most
+ * ground left, so the limb stays face-connected.
+ */
+function limbBetween(
+  b: Brush,
+  from: Vec3,
+  to: Vec3
+): void {
+  const cell = [...from];
+  while (cell.some((value, axis) => value !== to[axis])) {
+    const remaining = cell.map((value, axis) => to[axis] - value);
+    const axis = remaining.reduce((best, delta, index) => (Math.abs(delta) > Math.abs(remaining[best]) ? index : best), 0);
+    cell[axis] += Math.sign(remaining[axis]);
+    b.put([cell[0], cell[1], cell[2]], B.trunk);
   }
-  for (const [dx, dz] of Object.values(DIRECTIONS)) {
-    b.put([tx + dx * 2, crown - 1, tz + dz * 2], B.frond);
-    b.put([tx + dx * 3, crown - 2, tz + dz * 3], B.frond);
-  }
-  b.put([tx, crown + 1, tz], B.frond);
+}
+
+/**
+ * A flat canopy pad: a wide lower layer with a ragged rim under a narrower
+ * top, on the layers `y` and `y + 1` around `x, z`.
+ */
+function canopyPad(
+  b: Brush,
+  [x, y, z]: Vec3,
+  radius: number
+): void {
+  b.fill([x - radius - 1, y, z - radius - 1], [x + radius + 1, y + 1, z + radius + 1], (cx, cy, cz) => {
+    const distance = Math.hypot(cx - x, cz - z);
+    const rim = (cy === y ? radius + 0.6 : radius - 0.8) + (hash(cx, cy, cz, 10) - 0.5) * 1.2;
+
+    return distance <= rim ? B.acaciaLeaves : undefined;
+  });
 }
 
 /**
@@ -270,6 +281,121 @@ export function broadleafTree(
 }
 
 /**
+ * A giant tree: a buttressed trunk whose roots crawl over the ground and dive
+ * into it, a full circle of branches arcing up and out to leaf clusters, and
+ * a crown dome on top. `[x, y, z]` is the first air cell above the ground.
+ */
+export function giantTree(
+  b: Brush,
+  [x, y, z]: Vec3,
+  height = 30
+): void {
+  const top = y + height;
+  const branches = Array.from({ length: 10 }, (_, index) => {
+    const angle = (index / 10) * Math.PI * 2 + hash(x, index, z, 20) * 0.4;
+    const start = y + Math.round(height * (0.45 + hash(x, index, z, 21) * 0.3));
+    const reach = 12 + hash(x, index, z, 22) * 6;
+    const tip: Vec3 = [
+      x + Math.cos(angle) * reach,
+      Math.min(top, start + 3 + hash(x, index, z, 23) * 3),
+      z + Math.sin(angle) * reach
+    ];
+
+    return { angle, start, reach, tip };
+  });
+
+  /*
+   * Foliage first, so the wood is written over it where they meet. Each
+   * cluster sits on its branch tip, leaving the limb bare underneath.
+   */
+  for (const { tip: [tx, ty, tz] } of branches) {
+    leafCluster(b, [tx, ty + 2, tz], 5);
+  }
+  leafCluster(b, [x, top + 2, z], 7);
+
+  b.fill([x - 7, y - 1, z - 7], [x + 7, top, z + 7], (cx, cy, cz) => {
+    const rise = cy - y;
+    const radius = 2.7 - (rise / height) * 1 + 3.6 * Math.exp(-rise / 3);
+    const distance = Math.hypot(cx - x, cz - z) + (hash(cx, cy, cz, 24) - 0.5) * 0.7;
+
+    return distance < radius ? B.trunk : undefined;
+  });
+
+  // Each branch leaves the trunk rising steeply, then bends outwards.
+  for (const { angle, start, reach, tip } of branches) {
+    const from: Vec3 = [x, start, z];
+    const bend: Vec3 = [x + Math.cos(angle) * reach * 0.3, tip[1] + 1, z + Math.sin(angle) * reach * 0.3];
+    for (let step = 0; step <= 30; step++) {
+      const t = step / 30;
+      stamp(b, bezier(from, bend, tip, t), 1.9 - t * 0.9, B.trunk);
+    }
+  }
+
+  for (let root = 0; root < 11; root++) {
+    let angle = (root / 11) * Math.PI * 2 + hash(x, root, z, 25);
+    const length = 10 + hash(x, root, z, 26) * 8;
+    for (let distance = 2.5; distance <= length; distance += 0.5) {
+      const t = distance / length;
+      angle += (hash(root, Math.round(distance * 2), 0, 27) - 0.5) * 0.12;
+      // A low hump near the trunk, a ripple, then down into the ground.
+      const lift = (1 - t) * 1.8 + Math.sin(t * Math.PI * 3) * 0.6 * (1 - t) - t * 1.6;
+      stamp(b, [x + Math.cos(angle) * distance, y - 0.6 + lift, z + Math.sin(angle) * distance], 0.9 + (1 - t) * 1.1, B.trunk);
+    }
+  }
+}
+
+function bezier(
+  [ax, ay, az]: Vec3,
+  [bx, by, bz]: Vec3,
+  [cx, cy, cz]: Vec3,
+  t: number
+): Vec3 {
+  const u = 1 - t;
+
+  return [
+    u * u * ax + 2 * u * t * bx + t * t * cx,
+    u * u * ay + 2 * u * t * by + t * t * cy,
+    u * u * az + 2 * u * t * bz + t * t * cz
+  ];
+}
+
+/**
+ * Every cell whose centre lies within `radius` of a point.
+ */
+function stamp(
+  b: Brush,
+  [px, py, pz]: Vec3,
+  radius: number,
+  block: Block
+): void {
+  const reach = Math.max(radius, 0.9);
+  b.fill(
+    [Math.floor(px - reach), Math.floor(py - reach), Math.floor(pz - reach)],
+    [Math.ceil(px + reach), Math.ceil(py + reach), Math.ceil(pz + reach)],
+    (cx, cy, cz) => (Math.hypot(cx - px, cy - py, cz - pz) <= reach ? block : undefined)
+  );
+}
+
+/**
+ * A lumpy, flattened ball of leaves.
+ */
+function leafCluster(
+  b: Brush,
+  [px, py, pz]: Vec3,
+  radius: number
+): void {
+  b.fill(
+    [Math.floor(px - radius), Math.floor(py - radius), Math.floor(pz - radius)],
+    [Math.ceil(px + radius), Math.ceil(py + radius), Math.ceil(pz + radius)],
+    (cx, cy, cz) => {
+      const d = Math.hypot((cx - px) / radius, (cy - py) / (radius * 0.6), (cz - pz) / radius);
+
+      return d + hash(cx, cy, cz, 28) * 0.3 < 1.05 ? B.leaves : undefined;
+    }
+  );
+}
+
+/**
  * Low clipped hedge over the inclusive footprint `from`..`to`.
  */
 export function hedge(
@@ -278,28 +404,6 @@ export function hedge(
   to: Vec3
 ): void {
   b.box(from, to, B.leaves);
-}
-
-/**
- * Soil under the footprint `from`..`to`, planted with flowers of one random
- * colour.
- */
-export function flowerBed(
-  b: Brush,
-  [x0, y, z0]: Vec3,
-  [x1, , z1]: Vec3,
-  random: Random
-): void {
-  const flower = kFlowers[Math.floor(random() * kFlowers.length)];
-
-  b.box([x0, y - 1, z0], [x1, y - 1, z1], B.soil);
-  for (let z = z0; z <= z1; z++) {
-    for (let x = x0; x <= x1; x++) {
-      if (random() > 0.2) {
-        b.put([x, y, z], flower, { rotation: Math.floor(random() * 4) });
-      }
-    }
-  }
 }
 
 /**

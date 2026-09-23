@@ -15,19 +15,22 @@ export const SITE = {
      * the pyramid's plinth.
      */
     origin: [35, 0, 0],
-    length: 110
+    length: 170
   },
   pyramid: {
-    origin: [178, 0, 0]
+    /**
+     * The plinth's west edge meets the end of the path.
+     */
+    origin: [258, 0, 0]
   }
 } as const;
 
 // CONSTANTS
-const kCopySpacing = { x: 300, z: 150 };
+const kCopySpacing = { x: 400, z: 190 };
 /**
  * Bounds of one copy of the scene, spires and summit included.
  */
-const kExtent = { min: [-50, -30, -62], max: [240, 66, 62] } as const;
+const kExtent = { min: [-50, -40, -85], max: [345, 82, 85] } as const;
 
 export interface Bounds {
   min: Vec3;
