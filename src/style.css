@@ -1,0 +1,24 @@
+:root {
+    background: #182943;
+}
+body {
+    margin: 0;
+    overflow: hidden;
+}
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+}
+#loading {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #142639;
+    color: #efd19a;
+    font:
+        25px Georgia,
+        serif;
+    z-index: 10;
+}

@@ -1,0 +1,34 @@
+{
+  "name": "floating-tomb-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/link-editor.mjs",
+    "dev": "node ../editor/node_modules/vite/bin/vite.js --host 0.0.0.0",
+    "build": "npm run typecheck && node ../editor/node_modules/vite/bin/vite.js build",
+    "typecheck": "node ../editor/node_modules/typescript/bin/tsc --noEmit",
+    "lint": "node ../editor/node_modules/oxlint/bin/oxlint src",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JollyPixel/voxel-demo-ai.git"
+  },
+  "keywords": [],
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/JollyPixel/voxel-demo-ai/issues"
+  },
+  "homepage": "https://github.com/JollyPixel/voxel-demo-ai#readme",
+  "dependencies": {
+    "@jolly-pixel/engine": "file:../editor/packages/engine",
+    "@jolly-pixel/runtime": "file:../editor/packages/runtime",
+    "@jolly-pixel/ui": "file:../editor/packages/ui",
+    "@jolly-pixel/voxel.renderer": "file:../editor/packages/voxel-renderer",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@openally/config.oxlint": "file:../editor/node_modules/@openally/config.oxlint",
+    "@openally/config.typescript": "file:../editor/node_modules/@openally/config.typescript"
+  }
+}

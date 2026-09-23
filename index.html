@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Floating Tomb · JollyPixel</title>
+    </head>
+    <body>
+        <canvas id="scene" tabindex="0"></canvas
+        ><jolly-scope
+            ><jolly-dock-layout storage-key="floating-tomb:layout"
+                ><jolly-dock
+                    id="tools"
+                    key="tools"
+                    side="right"
+                    align="start"
+                    overlay
+                    collapsible
+                    size="340"
+                ></jolly-dock></jolly-dock-layout></jolly-scope
+        ><jolly-scope
+            ><jolly-controls position="bottom-left" heading="Fly controls"
+                ><jolly-control description="Move"
+                    ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd
+                    ><kbd>D</kbd></jolly-control
+                ><jolly-control description="Rise / descend"
+                    ><kbd>Space</kbd><kbd>Shift</kbd></jolly-control
+                ><jolly-control description="Look around"
+                    ><kbd>Middle drag</kbd></jolly-control
+                ><jolly-control description="Change speed"
+                    ><kbd>Middle drag</kbd><kbd>Wheel</kbd></jolly-control
+                ></jolly-controls
+            ></jolly-scope
+        >
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>
