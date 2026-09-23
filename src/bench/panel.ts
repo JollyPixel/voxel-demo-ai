@@ -9,8 +9,9 @@ import { ViewDistance, type VoxelEngine } from "@jolly-pixel/voxel.renderer";
 import type * as THREE from "three/webgpu";
 
 // Import Internal Dependencies
-import { LAYERS } from "../blocks/index.ts";
+import { LAYERS, type Tileset } from "../blocks/index.ts";
 import { AO_STRENGTH } from "../config.ts";
+import { createEditorArchive } from "../export/editorArchive.ts";
 import type { Gtao } from "../scene/gtao.ts";
 import type { Effects } from "../scene/effects.ts";
 import type { Lighting } from "../scene/lighting.ts";
@@ -32,6 +33,7 @@ export interface PanelContext {
   lighting: Lighting;
   gtao: Gtao;
   effects: Effects;
+  tileset: Tileset;
   build: BuildReport;
 }
 
@@ -107,6 +109,7 @@ export function createBenchmarkPanel(
     benchmark.refresh();
   });
 
+  addEditorExport(pane, context);
   addRenderToggles(pane, context);
   dock.sync();
 
@@ -124,6 +127,51 @@ export function createBenchmarkPanel(
       benchmark.refresh();
     }
   };
+}
+
+/**
+ * Downloads the world as an archive for the voxel-map editor's Map Config
+ * import.
+ */
+function addEditorExport(
+  pane: Pane,
+  { engine, tileset, build }: PanelContext
+): void {
+  const status = { exported: "Not exported yet" };
+  const folder = pane.addFolder({ title: "Voxel-map editor", expanded: false });
+  folder.addMonitors(status, { exported: { label: "archive" } });
+  folder.addButton({ title: "Export .zip" }).on("click", () => {
+    try {
+      const { bytes, entries } = createEditorArchive({
+        world: engine.save(),
+        tileset: {
+          id: tileset.definition.id,
+          tileSize: tileset.definition.tileSize,
+          atlas: tileset.atlas
+        }
+      });
+      const decoded = Object.values(entries).reduce((sum, size) => sum + size, 0);
+      download(bytes, `floating-tomb-seed-${build.seed}.zip`);
+      status.exported = `${(bytes.byteLength / 1048576).toFixed(1)} MiB zip · ${(decoded / 1048576).toFixed(1)} MiB decoded`;
+    }
+    catch (error) {
+      status.exported = error instanceof Error ? error.message : String(error);
+      console.error(error);
+    }
+    folder.refresh();
+  });
+}
+
+function download(
+  bytes: Uint8Array<ArrayBuffer>,
+  fileName: string
+): void {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function addRenderToggles(

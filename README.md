@@ -31,6 +31,10 @@ The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performan
 
 The pane shows construction time by zone, total voxel count, chunk and triangle counts, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, meshing, layers, effects, view distance, and inspector overlays. The save/load button reports round trip time and JSON size.
 
+## Open in the voxel-map editor
+
+In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map (`maps/floating-tomb.voxelmap.json`), its block definitions and layers, and the atlas as a pixel-art asset (`textures/floating-tomb.pixelart`). The exporter rewrites the chunk size to the editor's 16 and links the tileset to that asset. It refuses a world over the editor's 16 MiB entry limit, which a single scene copy stays under. Asset ids are fixed, so choose **Replace** on import to update an earlier export. Lights, water, sky and the gold material finish are not part of the map; see F-20 to F-25 in [FEEDBACK.md](FEEDBACK.md).
+
 ## Check
 
 ```sh

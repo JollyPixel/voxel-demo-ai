@@ -75,6 +75,50 @@ Entries F-01 to F-10 were fixed in the editor workspace and the demo now uses th
 - Workaround used: `main.ts` latches the count on the renderer's `"draw"` event, as the runtime's `RendererMetrics` does.
 - Suggestion: Say in the renderer docs that `info` is only valid inside a `"draw"` handler, and point to the `renderer` metrics group in `runtime.metrics`.
 
+## Voxel-map editor interop
+
+The pane's **Export .zip** button (`src/export/editorArchive.ts`) packs the world for the editor's Map Config import. The seed-1337 scene (289,695 voxels, 71 blocks) came to a 1.2 MiB zip, 11.0 MiB decoded. `planAssetImport` and `importAssetArchive` accepted it with the editor's own kind handlers, and the offline editor rendered it textured with every block in the library.
+
+### [F-20] The editor's chunk size is fixed at 16, and worlds refuse any other
+- Area: editor · Severity: friction
+- Context: Opening the demo's `chunkSize: 32` world in the voxel-map editor.
+- What happened: `voxelMapAssetKind({ chunkSize: 16 })` is hard-coded in `editors/voxel-map/vite.config.ts` and `src/boot/offlineWorkspace.ts`, and `VoxelMapEditor.ts` repeats `chunkSize: 16`. `deserializeVoxelWorld` throws on a document of another size, so the import pre-flight rejects the map as `unreadable-asset`. The document itself does not depend on the chunk size: voxel keys are layer coordinates.
+- Workaround used: The exporter rewrites `chunkSize` to 16. It copies the value from the editor sources, since no package exports it.
+- Suggestion: Let `deserializeVoxelWorld` re-partition a document of another chunk size instead of throwing, or read the chunk size from the document when an asset is created or imported. If the editor keeps one size per workspace, make it workspace configuration (Vite plugin option, `?chunk-size=` for offline mode) and export the default.
+
+### [F-21] Archive limits are fixed constants, and voxel JSON uses about 40 bytes per voxel
+- Area: asset-server · Severity: friction
+- Context: Checking that the export fits before downloading.
+- What happened: `readAssetArchive` refuses an entry over 16 MiB or an archive over 64 MiB. Both limits apply to decoded sizes and cannot be set from the editor. The map entry is 11.0 MiB for one scene copy, about 40 bytes per voxel (`"x,y,z":{"block":n,"transform":n}`). `?copies=2` would already exceed the limit, although the zip compresses about 9×.
+- Workaround used: The exporter repeats the constants and refuses early with a message naming the entry and its size.
+- Suggestion: Pass the limits through the editor's configuration next to the chunk size (F-20), and export `DEFAULT_ARCHIVE_MAX_*` from a browser-safe entry point. Longer term, a compact voxel encoding (per-layer packed position and voxel arrays, base64 like `.pixelart`) would shrink maps several times, whatever the limit.
+
+### [F-22] No browser-safe way to write an archive or name the asset kinds
+- Area: asset-server · Severity: missing-feature
+- Context: Producing an importable `.zip` from a page with no asset back-end.
+- What happened: `exportAssetArchive` needs a back-end. Writing one directly means hand-building `bundle.json` and repeating `VOXEL_MAP_KIND`, `PIXEL_ART_KIND` and `ASSET_ARCHIVE_MANIFEST_PATH`. The asset packages are workspace-private, and their root entry points import server dependencies.
+- Workaround used: `editorArchive.ts` writes the manifest and zips with `fflate`, with the kind names copied into the demo. The result was checked against the editor's `readAssetArchive` and `planAssetImport`.
+- Suggestion: A pure `writeAssetArchive({ root, assets })` beside `readAssetArchive`, and the kind constants plus `tilesetAsset()` exported from the client entry points once the asset packages are published.
+
+### [F-23] The editor ignores a tileset's `src`
+- Area: editor · Severity: friction
+- Context: The demo's tileset is a painted atlas passed as a data URL in `src`.
+- What happened: The editor resolves tileset pixels only through `definition.asset.id` (`features/tilesets/tilesetEntries.ts`). A map whose tilesets use `src` opens with every tileset unlinked and every block untextured, and nothing offers to convert them.
+- Workaround used: The exporter encodes the atlas as a `.pixelart` asset and replaces `src` with an `asset` reference.
+- Suggestion: On open or import, offer to turn a `src` image (URL or data URL) into a pixel-art asset, the same way the seed turns `tileset.png` into one with `createPixelBufferFromPng`.
+
+### [F-24] Archive and editor docs disagree with the code
+- Area: docs · Severity: docs
+- What happened: `asset-server/docs/Archive.md` spells the kinds `voxel-map` and `pixel-art` in its manifest example, but the registered kinds are `voxelmap` and `pixelart`, and a manifest copied from the docs is rejected. The voxel-map editor README says a tileset definition's `src` holds the asset id, but the code only reads `asset.id` (F-23).
+- Suggestion: Fix both examples, and mention in the editor README that `src` tilesets load unlinked.
+
+### [F-25] Material group finishes do not travel with the map
+- Area: blocks · Severity: missing-feature
+- Context: The demo's gold blocks set `materialGroup: "gold"` and get their metalness from `materialCustomizer`.
+- What happened: The group name is saved, but the finish lives in host code, so the editor renders gold as matte stone. The demo's lights, water and sky are likewise not part of the document.
+- Workaround used: None; accepted for editing.
+- Suggestion: Store per-group surface parameters (roughness, metalness, emissive) in the document, next to `blocks`, and apply them in `VoxelRenderer` and the editor. Point lights could be a known object type in `objectLayers`.
+
 ## Summary
 
 | Subject | Entries | Severity |
@@ -83,6 +127,7 @@ Entries F-01 to F-10 were fixed in the editor workspace and the demo now uses th
 | Meshing and scale | F-19, F-11, F-12 | perf, missing-feature, missing-feature |
 | World writes | F-18 | perf |
 | Camera and runtime API | F-14, F-17 | friction, docs |
+| Voxel-map editor interop | F-20, F-21, F-22, F-23, F-24, F-25 | friction, friction, missing-feature, friction, docs, missing-feature |
 
 ## Benchmark results
 
@@ -103,3 +148,4 @@ All four runs held 60 fps. These runs predate the giant tree, which adds a few t
 - The fixes for F-01 to F-10 each replaced a demo workaround with a one-line option: `castShadow`, `materialGroup`, `ambientOcclusion`, `tileMinification`, `transaction()` and `camera.postProcessing`.
 - Named layers made terrain, structure and garden visibility easy to inspect.
 - The engine inspector exposed useful chunk and mesh counts for the benchmark pane.
+- `engine.save()` already carried everything the editor needs: layers with their order, and block definitions with shapes, alpha modes and material groups. Once the chunk size and tileset were adapted, the archive imported on the first try, and its stable asset ids let a new export replace the previous one.

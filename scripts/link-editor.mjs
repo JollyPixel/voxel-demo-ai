@@ -8,6 +8,8 @@ const packages = [
   ['@jolly-pixel/runtime', 'packages/runtime'],
   ['@jolly-pixel/ui', 'packages/ui'],
   ['@jolly-pixel/voxel.renderer', 'packages/voxel-renderer'],
+  ['@jolly-pixel/pixel-draw.renderer', 'packages/pixel-draw-renderer'],
+  ['fflate', 'packages/asset-server/node_modules/fflate'],
   ['@openally/config.typescript', 'node_modules/@openally/config.typescript'],
   ['@openally/config.oxlint', 'node_modules/@openally/config.oxlint'],
   ['@types/three', 'node_modules/@types/three'],

@@ -22,9 +22,11 @@
   "homepage": "https://github.com/JollyPixel/voxel-demo-ai#readme",
   "dependencies": {
     "@jolly-pixel/engine": "file:../editor/packages/engine",
+    "@jolly-pixel/pixel-draw.renderer": "file:../editor/packages/pixel-draw-renderer",
     "@jolly-pixel/runtime": "file:../editor/packages/runtime",
     "@jolly-pixel/ui": "file:../editor/packages/ui",
     "@jolly-pixel/voxel.renderer": "file:../editor/packages/voxel-renderer",
+    "fflate": "file:../editor/packages/asset-server/node_modules/fflate",
     "three": "0.186.0"
   },
   "devDependencies": {

@@ -126,6 +126,10 @@ function allocateFaceTiles(
 export interface Tileset {
   definition: TilesetDefinition;
   blocks: BlockDefinition[];
+  /**
+   * The painted atlas as RGBA8, for exporters that cannot read the data URL.
+   */
+  atlas: ImageData;
 }
 
 /**
@@ -158,6 +162,7 @@ export function createTileset(): Tileset {
       cols: kAtlasCols,
       rows
     },
-    blocks: definitions
+    blocks: definitions,
+    atlas: context.getImageData(0, 0, canvas.width, canvas.height)
   };
 }

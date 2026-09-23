@@ -100,6 +100,7 @@ const panel = createBenchmarkPanel({
   lighting,
   gtao,
   effects,
+  tileset,
   build: { seed: config.seed, copies: config.copies, timings, meshMs, chunkCount }
 });
 startFrameLoop();
