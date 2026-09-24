@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Brush } from '../src/builder/Brush.ts';
-import { outerCorner, rising } from '../src/builder/orientation.ts';
-import { createRandom } from '../src/utils/random.ts';
+import { Brush } from '../src/core/builder/Brush.ts';
+import { outerCorner, rising } from '../src/core/builder/orientation.ts';
+import { createRandom } from '../src/core/utils/random.ts';
 
 const kStone = { ids: [1], layer: 'Structure' };
 const kStair = { ids: [2], layer: 'Structure' };
@@ -17,7 +17,7 @@ function recordingBrush() {
     removeVoxel(name, { position: { x, y, z } }) { cells.delete(`${name}|${x},${y},${z}`); }
   };
 
-  return { brush: Brush.forWorld(world), cells };
+  return { brush: Brush.forWorld(world, ['Terrain', 'Structure', 'Garden']), cells };
 }
 
 test('seeded random sequence is repeatable', () => {

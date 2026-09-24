@@ -9,13 +9,13 @@ import { ViewDistance, type VoxelEngine } from "@jolly-pixel/voxel.renderer";
 import type * as THREE from "three/webgpu";
 
 // Import Internal Dependencies
-import { LAYERS, type Tileset } from "../blocks/index.ts";
-import { AO_STRENGTH } from "../config.ts";
+import { AO_STRENGTH } from "../app/config.ts";
+import type { Tileset } from "../blocks/registry.ts";
 import { createEditorArchive } from "../export/editorArchive.ts";
 import type { Gtao } from "../scene/gtao.ts";
 import type { Effects } from "../scene/effects.ts";
 import type { Lighting } from "../scene/lighting.ts";
-import type { ZoneTimings } from "../zones/index.ts";
+import type { WorldDefinition, ZoneTimings } from "../world.ts";
 
 export interface BuildReport {
   seed: number;
@@ -29,6 +29,7 @@ export interface BuildReport {
 }
 
 export interface PanelContext {
+  world: WorldDefinition;
   engine: VoxelEngine;
   lighting: Lighting;
   gtao: Gtao;
@@ -55,7 +56,7 @@ export interface FrameSample {
 export function createBenchmarkPanel(
   context: PanelContext
 ): { update: (sample: FrameSample) => void; } {
-  const { engine, build } = context;
+  const { world, engine, build } = context;
   const dock = DockFacade.query("#tools");
   keepCanvasFocused(dock.element);
   document.addEventListener("keydown", (event) => {
@@ -66,7 +67,7 @@ export function createBenchmarkPanel(
   });
 
   const pane = new Pane({
-    title: `Floating Tomb · seed ${build.seed}`,
+    title: `${world.title} · seed ${build.seed}`,
     container: dock.element,
     grow: false,
     collapsible: true
@@ -123,7 +124,7 @@ export function createBenchmarkPanel(
       stats.geometries = info.memory.geometries;
       stats.textures = info.memory.textures;
       // Read by tests/benchmark.mjs.
-      Object.assign(window, { __tombMetrics: { ...stats } });
+      Object.assign(window, { __worldMetrics: { ...stats } });
       benchmark.refresh();
     }
   };
@@ -135,7 +136,7 @@ export function createBenchmarkPanel(
  */
 function addEditorExport(
   pane: Pane,
-  { engine, tileset, build }: PanelContext
+  { world, engine, tileset, build }: PanelContext
 ): void {
   const status = { exported: "Not exported yet" };
   const folder = pane.addFolder({ title: "Voxel-map editor", expanded: false });
@@ -144,6 +145,7 @@ function addEditorExport(
     try {
       const { bytes, entries } = createEditorArchive({
         world: engine.save(),
+        name: world.id,
         tileset: {
           id: tileset.definition.id,
           tileSize: tileset.definition.tileSize,
@@ -151,7 +153,7 @@ function addEditorExport(
         }
       });
       const decoded = Object.values(entries).reduce((sum, size) => sum + size, 0);
-      download(bytes, `floating-tomb-seed-${build.seed}.zip`);
+      download(bytes, `${world.id}-seed-${build.seed}.zip`);
       status.exported = `${(bytes.byteLength / 1048576).toFixed(1)} MiB zip · ${(decoded / 1048576).toFixed(1)} MiB decoded`;
     }
     catch (error) {
@@ -176,7 +178,7 @@ function download(
 
 function addRenderToggles(
   pane: Pane,
-  { engine, lighting, gtao, effects }: PanelContext
+  { world, engine, lighting, gtao, effects }: PanelContext
 ): void {
   const options = {
     shadows: lighting.shadows,
@@ -216,9 +218,9 @@ function addRenderToggles(
     engine.inspector.chunkBounds = value;
   });
 
-  const visibleLayers = Object.fromEntries(LAYERS.map((name) => [name, true]));
+  const visibleLayers = Object.fromEntries(world.blocks.layers.map((name) => [name, true]));
   const layers = pane.addFolder({ title: "Layers" });
-  for (const name of LAYERS) {
+  for (const name of world.blocks.layers) {
     layers.addBinding(visibleLayers, name).on("change", ({ value }) => engine.world.setLayerVisible(name, value));
   }
 }

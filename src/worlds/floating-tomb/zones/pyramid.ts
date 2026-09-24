@@ -1,8 +1,8 @@
 // Import Internal Dependencies
-import { B } from "../blocks/index.ts";
-import type { Brush } from "../builder/Brush.ts";
-import { FloatingIsland, GROUND } from "../builder/FloatingIsland.ts";
-import { outerCorner, rising } from "../builder/orientation.ts";
+import { B, ISLAND_BLOCKS } from "../blocks.ts";
+import type { Brush } from "../../../core/builder/Brush.ts";
+import { FloatingIsland, GROUND } from "../../../core/builder/FloatingIsland.ts";
+import { outerCorner, rising } from "../../../core/builder/orientation.ts";
 import {
   acacia,
   basin,
@@ -13,8 +13,8 @@ import {
   obelisk,
   pyramidion,
   sarcophagus
-} from "../builder/prefabs.ts";
-import type { Random } from "../utils/random.ts";
+} from "../prefabs.ts";
+import type { Random } from "../../../core/utils/random.ts";
 
 interface Tier {
   half: number;
@@ -60,7 +60,8 @@ export function buildPyramid(
     depth: 48,
     surface: "sand",
     flatRadius: 72,
-    seed: Math.floor(random() * 2 ** 31)
+    seed: Math.floor(random() * 2 ** 31),
+    blocks: ISLAND_BLOCKS
   });
   island.build(b);
 

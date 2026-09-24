@@ -1,7 +1,5 @@
-// Import Third-party Dependencies
-import type { BlockShapeID, FaceSlotName } from "@jolly-pixel/voxel.renderer";
-
 // Import Internal Dependencies
+import type { MaterialSpec, SurfaceFinish } from "../../core/blocks/materials.ts";
 import {
   bark,
   foliage,
@@ -9,7 +7,7 @@ import {
   grassSide,
   grassTop,
   rippledSand
-} from "./painters/ground.ts";
+} from "../../core/blocks/painters/ground.ts";
 import {
   carved,
   flagstones,
@@ -21,8 +19,8 @@ import {
   metal,
   rock,
   speckledStone
-} from "./painters/stone.ts";
-import { lowRes, Palette, type TilePainter } from "./painters/tile.ts";
+} from "../../core/blocks/painters/stone.ts";
+import { lowRes, Palette } from "../../core/blocks/painters/tile.ts";
 
 /**
  * World layers, from lowest to highest compositing priority: when two layers
@@ -31,62 +29,9 @@ import { lowRes, Palette, type TilePainter } from "./painters/tile.ts";
 export const LAYERS = ["Terrain", "Structure", "Garden"] as const;
 export type Layer = typeof LAYERS[number];
 
-/**
- * Texture slots of the engine's built-in shapes, plus `sides` for the four
- * vertical faces at once.
- */
-export type FaceSlot = FaceSlotName | "sides";
-
-export interface MaterialSpec {
-  name: string;
-  layer: Layer;
-  tile: TilePainter;
-  /**
-   * Tiles painted from the same painter with different seeds. The brush picks
-   * one per voxel from its position, which breaks up visible repetition.
-   * @default 1
-   */
-  alternates?: number;
-  /**
-   * Tiles for particular faces, e.g. the soil sides of a grass block.
-   */
-  faces?: Partial<Record<FaceSlot, TilePainter>>;
-  /**
-   * Extra shaped blocks sharing this material's first tile, reachable as
-   * `B.<material>.<shape>`.
-   */
-  variants?: readonly BlockShapeID[];
-  /**
-   * Alpha-masked foliage: rendered double-sided, never collidable.
-   */
-  cutout?: boolean;
-  /**
-   * Chunk material group, so `materialCustomizer` can tune these blocks
-   * apart from the rest of the atlas (see `surfaceFinish`).
-   */
-  group?: MaterialGroup;
-}
-
-export interface SurfaceFinish {
-  roughness: number;
-  metalness: number;
-}
-
-const kMaterialGroups = {
+export const FINISHES = {
   gold: { roughness: 0.38, metalness: 0.75 }
 } as const satisfies Record<string, SurfaceFinish>;
-const kDefaultFinish: SurfaceFinish = { roughness: 0.89, metalness: 0 };
-export type MaterialGroup = keyof typeof kMaterialGroups;
-
-/**
- * Surface finish of the chunk material for a block surface's material
- * group; ungrouped blocks are matte stone.
- */
-export function surfaceFinish(
-  group: string | undefined
-): SurfaceFinish {
-  return Object.hasOwn(kMaterialGroups, group ?? "") ? kMaterialGroups[group as MaterialGroup] : kDefaultFinish;
-}
 
 // CONSTANTS
 const kSandstone = new Palette("#8f7c52", "#b09c6c", "#cbb88a", "#dccc9f", "#e8dcb4", "#f4ecd0");
@@ -264,6 +209,4 @@ export const MATERIALS = {
     tile: bark(kBark),
     variants: ["poleY"]
   }
-} as const satisfies Record<string, MaterialSpec>;
-
-export type MaterialKey = keyof typeof MATERIALS;
+} as const satisfies Record<string, MaterialSpec<Layer>>;

@@ -1,13 +1,14 @@
 // Import Internal Dependencies
-import { B, type Block } from "../blocks/index.ts";
-import type { Brush } from "../builder/Brush.ts";
-import { FloatingIsland, GROUND } from "../builder/FloatingIsland.ts";
+import type { Block } from "../../../core/blocks/registry.ts";
+import { B, ISLAND_BLOCKS } from "../blocks.ts";
+import type { Brush } from "../../../core/builder/Brush.ts";
+import { FloatingIsland, GROUND } from "../../../core/builder/FloatingIsland.ts";
 import {
   monumentalArch,
   obelisk
-} from "../builder/prefabs.ts";
+} from "../prefabs.ts";
 import { SITE } from "../site.ts";
-import type { Random } from "../utils/random.ts";
+import type { Random } from "../../../core/utils/random.ts";
 
 // CONSTANTS
 const kDeck = GROUND;
@@ -104,7 +105,8 @@ function buildPier(
     depth: 12,
     surface: "grass",
     flatRadius: 5,
-    seed: Math.floor(random() * 2 ** 31)
+    seed: Math.floor(random() * 2 ** 31),
+    blocks: ISLAND_BLOCKS
   });
   islet.build(b.translated([x, bottom - GROUND, 0]));
 }
@@ -181,7 +183,8 @@ function buildGarden(
     roughness: 0,
     surface: "grass",
     flatRadius: radius,
-    seed: Math.floor(random() * 2 ** 31)
+    seed: Math.floor(random() * 2 ** 31),
+    blocks: ISLAND_BLOCKS
   });
   islet.build(b.translated([cx, 0, 0]));
 

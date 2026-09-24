@@ -1,6 +1,6 @@
 // Import Internal Dependencies
-import { B } from "../blocks/index.ts";
-import type { Brush } from "../builder/Brush.ts";
+import { B } from "./blocks.ts";
+import type { Brush } from "../../core/builder/Brush.ts";
 
 // CONSTANTS
 const kShapes = [

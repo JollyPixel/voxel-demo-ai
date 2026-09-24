@@ -1,14 +1,6 @@
-export interface CameraPose {
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-}
+// Import Internal Dependencies
+import type { CameraPose } from "../../core/world.ts";
 
-/**
- * Starting camera poses, selected with `?view=`.
- */
 export const VIEWS = {
   overview: { x: 150, y: 115, z: 250, yaw: 0, pitch: -0.4 },
   platform: { x: 18, y: 62, z: 72, yaw: -0.24, pitch: -0.62 },
@@ -19,8 +11,5 @@ export const VIEWS = {
   rotunda: { x: 96, y: 34, z: 22, yaw: -0.83, pitch: -0.38 },
   pyramid: { x: 150, y: 95, z: 160, yaw: -0.62, pitch: -0.26 },
   interior: { x: 218, y: 30, z: 0, yaw: -1.5708, pitch: -0.05 },
-  waterfall: { x: 362, y: 22, z: 90, yaw: 0.45, pitch: -0.3 },
-  pad: { x: 24, y: 50, z: 76, yaw: 0, pitch: -0.35 }
+  waterfall: { x: 362, y: 22, z: 90, yaw: 0.45, pitch: -0.3 }
 } as const satisfies Record<string, CameraPose>;
-
-export type ViewName = keyof typeof VIEWS;

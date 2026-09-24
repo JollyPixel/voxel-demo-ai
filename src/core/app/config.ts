@@ -1,6 +1,3 @@
-// Import Internal Dependencies
-import { VIEWS, type ViewName } from "./scene/views.ts";
-
 /**
  * Strength of the ambient occlusion the mesher bakes into chunk vertices.
  */
@@ -10,6 +7,7 @@ export const AO_STRENGTH = 0.75;
  * Demo settings, read from the page's query string (see README).
  */
 export interface DemoConfig {
+  world: string;
   seed: number;
   /**
    * Scene copies tiled on a grid, for stress testing.
@@ -30,27 +28,23 @@ export interface DemoConfig {
    */
   mips: boolean;
   /**
-   * Replaces the scene with the shape and orientation test pad.
+   * Starting camera pose; the world's default when absent or unknown.
    */
-  pad: boolean;
-  view: ViewName;
+  view: string | null;
 }
 
 export function readConfig(
-  search: string
+  search: string,
+  defaultWorld: string
 ): DemoConfig {
   const params = new URLSearchParams(search);
-  const pad = params.get("pad") === "1";
-  const requestedView = params.get("view");
-  const view = requestedView !== null && requestedView in VIEWS ?
-    requestedView as ViewName :
-    defaultView(pad);
 
   function clamped(key: string, fallback: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Number(params.get(key)) || fallback));
   }
 
   return {
+    world: params.get("world") ?? (params.get("pad") === "1" ? "test-pad" : defaultWorld),
     seed: clamped("seed", 1337, 1, 0x7fffffff),
     copies: clamped("copies", 1, 1, 4),
     greedy: params.get("greedy") !== "0",
@@ -58,13 +52,6 @@ export function readConfig(
     ao: params.get("ao") !== "0",
     gtao: params.get("gtao") === "1",
     mips: params.get("mips") !== "0",
-    pad,
-    view
+    view: params.get("view")
   };
-}
-
-function defaultView(
-  pad: boolean
-): ViewName {
-  return pad ? "pad" : "overview";
 }

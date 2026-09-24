@@ -1,2 +1,7 @@
 import { defineConfig } from 'vite';
-export default defineConfig({ resolve: { dedupe: ['three'] } });
+export default defineConfig({
+  server: {
+    allowedHosts: true
+  },
+  resolve: { dedupe: ['three'] }
+});

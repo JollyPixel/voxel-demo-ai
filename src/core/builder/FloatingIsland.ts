@@ -1,5 +1,5 @@
 // Import Internal Dependencies
-import { B, type Block } from "../blocks/index.ts";
+import type { Block } from "../blocks/registry.ts";
 import { fbm, hash } from "../utils/noise.ts";
 import type { Brush } from "./Brush.ts";
 
@@ -36,6 +36,16 @@ export interface FloatingIslandOptions {
    */
   flatRadius?: number;
   seed: number;
+  blocks: IslandBlocks;
+}
+
+export interface IslandBlocks {
+  grass: Block;
+  dirt: Block;
+  sand: Block;
+  rock: Block;
+  deepRock: Block;
+  bandRock: Block;
 }
 
 interface Column {
@@ -157,24 +167,24 @@ export class FloatingIsland {
     z: number,
     top: number
   ): Block {
-    const { surface, seed } = this.options;
+    const { surface, seed, blocks } = this.options;
     const below = top - y;
     if (surface === "sand" && below < kSoilDepth + 1) {
-      return B.sand;
+      return blocks.sand;
     }
     if (below === 0) {
-      return B.grass;
+      return blocks.grass;
     }
     if (below < kSoilDepth) {
-      return B.dirt;
+      return blocks.dirt;
     }
 
     // Bedding planes that sag a little, darkening with depth.
     const band = Math.floor((y + fbm(x / 11, z / 11, seed + 4) * 4) / 4);
     if (y < GROUND - 16) {
-      return band % 3 === 0 ? B.rock : B.basalt;
+      return band % 3 === 0 ? blocks.rock : blocks.deepRock;
     }
 
-    return band % 2 === 0 ? B.ochreRock : B.rock;
+    return band % 2 === 0 ? blocks.bandRock : blocks.rock;
   }
 }

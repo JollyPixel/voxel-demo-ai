@@ -26,18 +26,10 @@ import {
 // Import Internal Dependencies
 import type { Fixtures } from "../builder/fixtures.ts";
 import { createRandom } from "../utils/random.ts";
+import { sunDirection, type Atmosphere, type CloudOptions, type SkyColors } from "./atmosphere.ts";
 
 // CONSTANTS
-export const SKY = {
-  horizon: "#f4dcc0",
-  blue: "#8db4dc",
-  zenith: "#3a6aad",
-  haze: "#bfcadb"
-};
-const kCloudCount = 150;
 const kPuffsPerCloud = 6;
-const kCloudSpan = { minX: -250, width: 800 };
-const kCloudDrift = 0.4;
 /**
  * Ripples on the pools: direction (x, z), wavelength and speed in world
  * units, and slope. Their sum drives the surface normal.
@@ -66,32 +58,35 @@ export interface Effects {
 
 export function createEffects(
   fixtures: Readonly<Fixtures>,
-  sunDirection: THREE.Vector3
+  atmosphere: Atmosphere
 ): Effects {
-  const water = createWater(fixtures, sunDirection);
-  const clouds = new CloudSea();
+  const sun = sunDirection(atmosphere);
+  const water = createWater(fixtures, sun, atmosphere.sky);
+  const clouds = atmosphere.clouds ? new CloudSea(atmosphere.clouds) : null;
+  const cloudMesh = clouds?.mesh ?? new THREE.Group();
 
   const root = new THREE.Group();
-  root.add(water, clouds.mesh);
+  root.add(water, cloudMesh);
 
   return {
     root,
     water,
-    clouds: clouds.mesh,
-    sky: skyColor(normalize(positionLocal), uniform(sunDirection)),
+    clouds: cloudMesh,
+    sky: skyColor(normalize(positionLocal), uniform(sun), atmosphere.sky),
     animate(dt) {
-      clouds.drift(dt * kCloudDrift);
+      clouds?.drift(dt);
     }
   };
 }
 
 function createWater(
   { pools, waterfalls }: Readonly<Fixtures>,
-  sunDirection: THREE.Vector3
+  sunDirection: THREE.Vector3,
+  sky: SkyColors
 ): THREE.Group {
   const group = new THREE.Group();
 
-  const surface = createPoolMaterial(uniform(sunDirection));
+  const surface = createPoolMaterial(uniform(sunDirection), sky);
   for (const { center, width, depth } of pools) {
     const pool = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), surface);
     pool.rotation.x = -Math.PI / 2;
@@ -118,7 +113,8 @@ function createWater(
  * turns the sun into a glint.
  */
 function createPoolMaterial(
-  sun: THREE.Node<"vec3">
+  sun: THREE.Node<"vec3">,
+  sky: SkyColors
 ): THREE.MeshStandardNodeMaterial {
   const material = new THREE.MeshStandardNodeMaterial({
     transparent: true,
@@ -146,7 +142,7 @@ function createPoolMaterial(
 
   const view = normalize(cameraPosition.sub(positionWorld));
   const fresnel = pow(float(1).sub(max(dot(normal, view), 0)), 5).mul(0.9).add(0.06);
-  const mirrored = skyColor(reflect(view.negate(), normal), sun);
+  const mirrored = skyColor(reflect(view.negate(), normal), sun, sky);
 
   material.normalNode = transformNormalToView(normal);
   // Crests facing the viewer catch a little more light than the troughs.
@@ -192,13 +188,14 @@ function createWaterfallMaterial(): THREE.MeshBasicNodeMaterial {
  */
 function skyColor(
   direction: THREE.Node<"vec3">,
-  sun: THREE.Node<"vec3">
+  sun: THREE.Node<"vec3">,
+  sky: SkyColors
 ): THREE.Node<"vec3"> {
   const up = direction.y;
   const glow = pow(max(dot(direction, sun), 0), float(12)).mul(0.55);
-  const lower = mix(color(SKY.horizon), color(SKY.blue), smoothstep(float(0), float(0.18), up));
-  const gradient = mix(lower, color(SKY.zenith), smoothstep(float(0.18), float(0.7), up));
-  const below = mix(gradient, color(SKY.haze), smoothstep(float(0), float(-0.25), up));
+  const lower = mix(color(sky.horizon), color(sky.blue), smoothstep(float(0), float(0.18), up));
+  const gradient = mix(lower, color(sky.zenith), smoothstep(float(0.18), float(0.7), up));
+  const below = mix(gradient, color(sky.haze), smoothstep(float(0), float(-0.25), up));
 
   return below.add(vec3(1, 0.85, 0.6).mul(glow));
 }
@@ -210,10 +207,15 @@ function skyColor(
 class CloudSea {
   readonly mesh: THREE.InstancedMesh;
   readonly #puffs: THREE.Matrix4[] = [];
+  readonly #options: CloudOptions;
 
-  constructor() {
+  constructor(
+    options: CloudOptions
+  ) {
+    this.#options = options;
+    const { count, x, y, z } = options;
     const material = new THREE.MeshLambertMaterial({ color: "#ffffff", emissive: "#6f7a92", flatShading: true });
-    this.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), material, kCloudCount * kPuffsPerCloud);
+    this.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), material, count * kPuffsPerCloud);
     // The puffs move every frame; their bounds are never recomputed.
     this.mesh.frustumCulled = false;
     const random = createRandom(163);
@@ -221,12 +223,12 @@ class CloudSea {
     const scale = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
 
-    for (let cloud = 0; cloud < kCloudCount; cloud++) {
+    for (let cloud = 0; cloud < count; cloud++) {
       const size = 6 + random() * 12;
       const centre = new THREE.Vector3(
-        kCloudSpan.minX + random() * kCloudSpan.width,
-        -18 - random() * 30,
-        -260 + random() * 560
+        x[0] + random() * (x[1] - x[0]),
+        y[1] - random() * (y[1] - y[0]),
+        z[0] + random() * (z[1] - z[0])
       );
       for (let puff = 0; puff < kPuffsPerCloud; puff++) {
         position.set(
@@ -243,12 +245,14 @@ class CloudSea {
   }
 
   drift(
-    dx: number
+    dt: number
   ): void {
+    const { x: [minX, maxX], drift } = this.#options;
+    const dx = dt * drift;
     for (const [index, puff] of this.#puffs.entries()) {
       puff.elements[12] += dx;
-      if (puff.elements[12] > kCloudSpan.minX + kCloudSpan.width) {
-        puff.elements[12] -= kCloudSpan.width;
+      if (puff.elements[12] > maxX) {
+        puff.elements[12] -= maxX - minX;
       }
       this.mesh.setMatrixAt(index, puff);
     }

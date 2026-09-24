@@ -1,8 +1,9 @@
 // Import Internal Dependencies
-import { B, type Block } from "../blocks/index.ts";
-import type { Brush } from "../builder/Brush.ts";
-import { FloatingIsland, GROUND } from "../builder/FloatingIsland.ts";
-import { rising, type Direction } from "../builder/orientation.ts";
+import type { Block } from "../../../core/blocks/registry.ts";
+import { B, ISLAND_BLOCKS } from "../blocks.ts";
+import type { Brush } from "../../../core/builder/Brush.ts";
+import { FloatingIsland, GROUND } from "../../../core/builder/FloatingIsland.ts";
+import { rising, type Direction } from "../../../core/builder/orientation.ts";
 import {
   acacia,
   basin,
@@ -11,9 +12,9 @@ import {
   gateway,
   giantTree,
   pyramidion
-} from "../builder/prefabs.ts";
-import { hash } from "../utils/noise.ts";
-import type { Random } from "../utils/random.ts";
+} from "../prefabs.ts";
+import { hash } from "../../../core/utils/noise.ts";
+import type { Random } from "../../../core/utils/random.ts";
 
 // CONSTANTS
 const kLawn = GROUND;
@@ -44,7 +45,8 @@ export function buildPlatform(
     depth: 30,
     surface: "grass",
     flatRadius: 38,
-    seed: Math.floor(random() * 2 ** 31)
+    seed: Math.floor(random() * 2 ** 31),
+    blocks: ISLAND_BLOCKS
   });
   island.build(b);
 

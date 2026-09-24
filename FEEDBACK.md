@@ -61,7 +61,7 @@ Entries F-01 to F-10 were fixed in the editor workspace and the demo now uses th
 
 ## Camera and runtime API
 
-### [F-14] `OrbitFlyCamera` does not accept camera options
+### [F-14] `OrbitFlyCamera` does not accept camera options (FIXED)
 - Area: rendering · Severity: friction
 - Context: Enabling GTAO when the fly camera is created.
 - What happened: `OrbitFlyCamera` passes only `fov` to `CameraComponent`, with `near` and `far` fixed at 0.1 and 2000, so `postProcessing`, `viewport`, `depth` and the clipping planes cannot be set in its options.
@@ -107,7 +107,7 @@ The pane's **Export .zip** button (`src/export/editorArchive.ts`) packs the worl
 - Workaround used: The exporter encodes the atlas as a `.pixelart` asset and replaces `src` with an `asset` reference.
 - Suggestion: On open or import, offer to turn a `src` image (URL or data URL) into a pixel-art asset, the same way the seed turns `tileset.png` into one with `createPixelBufferFromPng`.
 
-### [F-24] Archive and editor docs disagree with the code
+### [F-24] Archive and editor docs disagree with the code (FIXED)
 - Area: docs · Severity: docs
 - What happened: `asset-server/docs/Archive.md` spells the kinds `voxel-map` and `pixel-art` in its manifest example, but the registered kinds are `voxelmap` and `pixelart`, and a manifest copied from the docs is rejected. The voxel-map editor README says a tileset definition's `src` holds the asset id, but the code only reads `asset.id` (F-23).
 - Suggestion: Fix both examples, and mention in the editor README that `src` tilesets load unlinked.
@@ -128,24 +128,3 @@ The pane's **Export .zip** button (`src/export/editorArchive.ts`) packs the worl
 | World writes | F-18 | perf |
 | Camera and runtime API | F-14, F-17 | friction, docs |
 | Voxel-map editor interop | F-20, F-21, F-22, F-23, F-24, F-25 | friction, friction, missing-feature, friction, docs, missing-feature |
-
-## Benchmark results
-
-Runs used `tests/benchmark.mjs` in headless Chrome at 1440 × 900 on the local machine with seed 1337: a 32 px atlas, the platform with its giant tree, the viaduct and the seven-tier pyramid, with baked ambient occlusion, distant-tile averaging, and every voxel written through one `world.transaction()`. The live pane remains the source for measurements on a given machine.
-
-| Scenario | Voxels | Chunks | Triangles | Draw calls | Write | Mesh | Frame |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Greedy on, shadows on, 1 copy | 285,028 | 227 | 332,127 | 728 | 261 ms | 254 ms | 3.9 ms |
-| Greedy off, shadows on, 1 copy | 285,028 | 227 | 424,380 | 728 | 251 ms | 297 ms | 4.4 ms |
-| Greedy on, shadows off, 1 copy | 285,028 | 227 | 332,127 | 371 | 268 ms | 365 ms | 2.6 ms |
-| Greedy on, shadows on, 4 copies | 1,139,184 | 896 | 1,336,844 | 1,915 | 887 ms | 1,142 ms | 10 ms |
-
-All four runs held 60 fps. These runs predate the giant tree, which adds a few thousand voxels.
-
-## What worked well
-
-- The `VoxelRenderer` actor component plugged into the runtime and camera lifecycle without extra scene wiring, and forwards every engine option.
-- The fixes for F-01 to F-10 each replaced a demo workaround with a one-line option: `castShadow`, `materialGroup`, `ambientOcclusion`, `tileMinification`, `transaction()` and `camera.postProcessing`.
-- Named layers made terrain, structure and garden visibility easy to inspect.
-- The engine inspector exposed useful chunk and mesh counts for the benchmark pane.
-- `engine.save()` already carried everything the editor needs: layers with their order, and block definitions with shapes, alpha modes and material groups. Once the chunk size and tileset were adapted, the archive imported on the first try, and its stable asset ids let a new export replace the previous one.

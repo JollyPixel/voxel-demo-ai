@@ -5,7 +5,7 @@ import type {
 } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
-import { LAYERS, type Block } from "../blocks/index.ts";
+import type { Block } from "../blocks/registry.ts";
 import { hash } from "../utils/noise.ts";
 import type { Fixtures, PointLightFixture } from "./fixtures.ts";
 
@@ -27,6 +27,7 @@ export type BrushWorld = Pick<VoxelWorld, "getLayer" | "setVoxel" | "removeVoxel
 
 interface BrushTarget {
   world: BrushWorld;
+  layers: readonly string[];
   fixtures: Fixtures;
 }
 
@@ -37,15 +38,16 @@ interface BrushTarget {
  */
 export class Brush {
   static forWorld(
-    world: BrushWorld
+    world: BrushWorld,
+    layers: readonly string[]
   ): Brush {
-    for (const name of LAYERS) {
+    for (const name of layers) {
       if (!world.getLayer(name)) {
         throw new Error(`Brush: missing world layer "${name}"`);
       }
     }
 
-    return new Brush({ world, fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
+    return new Brush({ world, layers, fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
   }
 
   readonly #target: BrushTarget;
@@ -126,12 +128,12 @@ export class Brush {
   ): void {
     const [x0, y0, z0] = this.#cell(from);
     const [x1, y1, z1] = this.#cell(to);
-    const { world } = this.#target;
+    const { world, layers } = this.#target;
 
     for (let y = y0; y <= y1; y++) {
       for (let z = z0; z <= z1; z++) {
         for (let x = x0; x <= x1; x++) {
-          for (const layer of LAYERS) {
+          for (const layer of layers) {
             world.removeVoxel(layer, { position: { x, y, z } });
           }
         }

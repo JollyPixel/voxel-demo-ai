@@ -15,9 +15,9 @@ for (const [name, query] of scenarios) {
   await page.goto(`http://localhost:5173/${query}`, { waitUntil: 'domcontentloaded' });
   try {
     await page.waitForSelector('#loading', { state: 'detached', timeout: 180000 });
-    await page.waitForFunction(() => window.__tombMetrics?.fps > 0, undefined, { timeout: 60000 });
+    await page.waitForFunction(() => window.__worldMetrics?.fps > 0, undefined, { timeout: 60000 });
     await page.waitForTimeout(2500);
-    const metrics = await page.evaluate(() => window.__tombMetrics ?? {});
+    const metrics = await page.evaluate(() => window.__worldMetrics ?? {});
     console.log(JSON.stringify({ name, totalMs: Math.round(performance.now() - start), metrics, errors }));
   } catch (error) {
     console.log(JSON.stringify({ name, error: String(error), errors }));

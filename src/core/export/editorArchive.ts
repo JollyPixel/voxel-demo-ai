@@ -38,13 +38,6 @@ const kVoxelMapKind = "voxelmap";
 const kPixelArtKind = "pixelart";
 const kManifestPath = "bundle.json";
 
-/**
- * Stable ids, so importing a new export with "replace" updates the assets of
- * the previous one instead of piling up copies.
- */
-const kMapId = "floating-tomb-map";
-const kTilesetId = "floating-tomb-tileset";
-
 export interface EditorArchiveTileset {
   /**
    * Tileset id the blocks' tile references point to.
@@ -61,10 +54,11 @@ export interface EditorArchiveOptions {
   world: VoxelWorldJSON;
   tileset: EditorArchiveTileset;
   /**
-   * File stem of both assets inside the workspace.
-   * @default "floating-tomb"
+   * File stem and id prefix of both assets inside the workspace. Keep it
+   * stable, so importing a new export with "replace" updates the assets of
+   * the previous one instead of piling up copies.
    */
-  name?: string;
+  name: string;
 }
 
 export interface EditorArchive {
@@ -85,7 +79,9 @@ export class EditorArchiveError extends Error {}
 export function createEditorArchive(
   options: EditorArchiveOptions
 ): EditorArchive {
-  const { world, tileset, name = "floating-tomb" } = options;
+  const { world, tileset, name } = options;
+  const mapId = `${name}-map`;
+  const tilesetId = `${name}-tileset`;
   const mapPath = `maps/${name}.voxelmap.json`;
   const tilesetPath = `textures/${name}.pixelart`;
 
@@ -103,16 +99,16 @@ export function createEditorArchive(
       // Voxel keys are layer coordinates; only the target world's chunk size matters.
       chunkSize: EDITOR_TARGET.chunkSize,
       tilesets: world.tilesets.map((definition) => (definition.id === tileset.id ?
-        linkedTileset(definition) :
+        linkedTileset(definition, tilesetId) :
         definition))
     }),
     [kManifestPath]: new TextEncoder().encode(JSON.stringify({
       version: 1,
-      root: { id: kMapId, kind: kVoxelMapKind },
+      root: { id: mapId, kind: kVoxelMapKind },
       // Dependencies first, root last: import follows this order.
       assets: [
-        { id: kTilesetId, kind: kPixelArtKind, path: tilesetPath },
-        { id: kMapId, kind: kVoxelMapKind, path: mapPath }
+        { id: tilesetId, kind: kPixelArtKind, path: tilesetPath },
+        { id: mapId, kind: kVoxelMapKind, path: mapPath }
       ]
     }, null, 2))
   };
@@ -135,11 +131,12 @@ export function createEditorArchive(
  * pixel document if it is resized in the editor.
  */
 function linkedTileset(
-  definition: TilesetDefinition
+  definition: TilesetDefinition,
+  assetId: string
 ): TilesetDefinition {
   return {
     id: definition.id,
-    asset: { id: kTilesetId, kind: kPixelArtKind },
+    asset: { id: assetId, kind: kPixelArtKind },
     tileSize: definition.tileSize
   };
 }

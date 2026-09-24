@@ -1,13 +1,14 @@
 // Import Internal Dependencies
-import { B, type Block } from "../blocks/index.ts";
-import { hash } from "../utils/noise.ts";
-import type { Brush, Vec3 } from "./Brush.ts";
+import type { Block } from "../../core/blocks/registry.ts";
+import { B } from "./blocks.ts";
+import { hash } from "../../core/utils/noise.ts";
+import type { Brush, Vec3 } from "../../core/builder/Brush.ts";
 import {
   DIRECTIONS,
   outerCorner,
   rising,
   type Direction
-} from "./orientation.ts";
+} from "../../core/builder/orientation.ts";
 
 // CONSTANTS
 const kDiagonals = [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const;

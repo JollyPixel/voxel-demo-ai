@@ -9,11 +9,10 @@ import type {
 
 // Import Internal Dependencies
 import {
-  MATERIALS,
+  DEFAULT_FINISH,
   type FaceSlot,
-  type Layer,
-  type MaterialKey,
-  type MaterialSpec
+  type MaterialSpec,
+  type SurfaceFinish
 } from "./materials.ts";
 import {
   TILE_SIZE,
@@ -21,10 +20,7 @@ import {
   type TilePainter
 } from "./painters/tile.ts";
 
-export { LAYERS, surfaceFinish, type Layer } from "./materials.ts";
-
 // CONSTANTS
-const kTilesetId = "tomb";
 const kAtlasCols = 8;
 const kSideSlots: readonly FaceSlotName[] = ["right", "left", "front", "back"];
 
@@ -34,29 +30,62 @@ const kSideSlots: readonly FaceSlotName[] = ["right", "left", "front", "back"];
  */
 export interface Block {
   readonly ids: readonly number[];
-  readonly layer: Layer;
+  readonly layer: string;
 }
 
 type FaceTextures = Partial<Record<FaceSlotName, TileRef>>;
 type VariantsOf<Spec> = Spec extends { variants: readonly (infer Shape extends string)[]; } ? Shape : never;
-type MaterialBlocks = {
-  readonly [Key in MaterialKey]: Block & {
-    readonly [Shape in VariantsOf<typeof MATERIALS[Key]>]: Block
+export type MaterialBlocks<Materials extends Record<string, MaterialSpec>> = {
+  readonly [Key in keyof Materials]: Block & {
+    readonly [Shape in VariantsOf<Materials[Key]>]: Block
   };
 };
 
-const { blocks, definitions, tiles } = registerBlocks();
+export interface Tileset {
+  definition: TilesetDefinition;
+  blocks: BlockDefinition[];
+  /**
+   * The painted atlas as RGBA8, for exporters that cannot read the data URL.
+   */
+  atlas: ImageData;
+}
 
-/**
- * Block handles by material, e.g. `B.gold` or `B.sandstone.stair`.
- */
-export const B = blocks;
+export interface BlockSetOptions<Layer extends string> {
+  tilesetId: string;
+  layers: readonly Layer[];
+  finishes?: Record<string, SurfaceFinish>;
+}
+
+export interface BlockSet<
+  Materials extends Record<string, MaterialSpec> = Record<string, MaterialSpec>,
+  Layer extends string = string
+> {
+  /**
+   * Block handles by material, e.g. `B.gold` or `B.sandstone.stair`.
+   */
+  readonly B: MaterialBlocks<Materials>;
+  readonly layers: readonly Layer[];
+  readonly definitions: readonly BlockDefinition[];
+  /**
+   * Surface finish of the chunk material for a block surface's material
+   * group; ungrouped blocks are matte stone.
+   */
+  surfaceFinish: (group: string | undefined) => SurfaceFinish;
+  createTileset: () => Tileset;
+}
 
 /**
  * Gives every material one block per alternate tile in its base shape, plus
  * one block per shape variant, and collects the tiles to paint.
  */
-function registerBlocks(): { blocks: MaterialBlocks; definitions: BlockDefinition[]; tiles: TilePainter[]; } {
+export function defineBlocks<
+  const Layer extends string,
+  const Materials extends Record<string, MaterialSpec<Layer>>
+>(
+  materials: Materials,
+  options: BlockSetOptions<Layer>
+): BlockSet<Materials, Layer> {
+  const { tilesetId, layers, finishes = {} } = options;
   const definitions: BlockDefinition[] = [];
   const tiles: TilePainter[] = [];
   const blocks: Record<string, Block> = {};
@@ -75,7 +104,7 @@ function registerBlocks(): { blocks: MaterialBlocks; definitions: BlockDefinitio
       name,
       shapeId,
       defaultTexture: tile,
-      defaultTilesetId: kTilesetId,
+      defaultTilesetId: tilesetId,
       faceTextures,
       collidable: !spec.cutout,
       ...(spec.cutout ? { alphaMode: "mask" as const } : {}),
@@ -85,8 +114,7 @@ function registerBlocks(): { blocks: MaterialBlocks; definitions: BlockDefinitio
     return id;
   }
 
-  for (const key of Object.keys(MATERIALS) as MaterialKey[]) {
-    const spec: MaterialSpec = MATERIALS[key];
+  for (const [key, spec] of Object.entries(materials) as [string, MaterialSpec][]) {
     const mainTiles = Array.from({ length: spec.alternates ?? 1 }, () => allocateTile(spec.tile));
     const faceTextures = allocateFaceTiles(spec, allocateTile);
 
@@ -104,7 +132,17 @@ function registerBlocks(): { blocks: MaterialBlocks; definitions: BlockDefinitio
     blocks[key] = { ids, layer: spec.layer, ...Object.fromEntries(variants) };
   }
 
-  return { blocks: blocks as unknown as MaterialBlocks, definitions, tiles };
+  return {
+    B: blocks as unknown as MaterialBlocks<Materials>,
+    layers,
+    definitions,
+    surfaceFinish(group) {
+      return group !== undefined && Object.hasOwn(finishes, group) ? finishes[group] : DEFAULT_FINISH;
+    },
+    createTileset() {
+      return paintTileset(tilesetId, tiles, definitions);
+    }
+  };
 }
 
 function allocateFaceTiles(
@@ -123,20 +161,15 @@ function allocateFaceTiles(
   return faceTextures;
 }
 
-export interface Tileset {
-  definition: TilesetDefinition;
-  blocks: BlockDefinition[];
-  /**
-   * The painted atlas as RGBA8, for exporters that cannot read the data URL.
-   */
-  atlas: ImageData;
-}
-
 /**
  * Paints every tile and lays them out in one atlas, handed over as a data
  * URL so the demo ships no image asset.
  */
-export function createTileset(): Tileset {
+function paintTileset(
+  tilesetId: string,
+  tiles: readonly TilePainter[],
+  definitions: BlockDefinition[]
+): Tileset {
   const rows = Math.ceil(tiles.length / kAtlasCols);
   const canvas = document.createElement("canvas");
   canvas.width = kAtlasCols * TILE_SIZE;
@@ -156,7 +189,7 @@ export function createTileset(): Tileset {
 
   return {
     definition: {
-      id: kTilesetId,
+      id: tilesetId,
       src: canvas.toDataURL("image/png"),
       tileSize: TILE_SIZE,
       cols: kAtlasCols,
