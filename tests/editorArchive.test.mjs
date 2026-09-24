@@ -4,12 +4,14 @@ import { strFromU8, unzipSync } from 'fflate';
 import { decodePixelArtDocument } from '@jolly-pixel/pixel-draw.renderer';
 import {
   BlockRegistry,
+  DEFAULT_CHUNK_SIZE,
   decodeVoxelDocument,
   deserializeVoxelWorld,
+  MaterialGroupList,
   TilesetList,
   VoxelWorld
 } from '@jolly-pixel/voxel.renderer';
-import { createEditorArchive, EDITOR_TARGET, EditorArchiveError } from '../src/core/export/editorArchive.ts';
+import { createEditorArchive, EditorArchiveError } from '../src/core/export/editorArchive.ts';
 
 const kAtlas = { width: 64, height: 32, data: new Uint8ClampedArray(64 * 32 * 4).fill(200) };
 const kTileset = { id: 'tomb', tileSize: 32, atlas: kAtlas };
@@ -28,8 +30,10 @@ function savedWorld(voxels = { '-3,4,70': { block: 1, transform: 0 } }) {
       collidable: true,
       faceTextures: {},
       properties: {},
-      defaultTexture: { tilesetId: 'tomb', col: 1, row: 0 }
-    }]
+      defaultTexture: { tilesetId: 'tomb', col: 1, row: 0 },
+      materialGroup: 'gold'
+    }],
+    materialGroups: [{ id: 'gold', roughness: 0.38, metalness: 0.75, emissive: '#000000', emissiveIntensity: 1 }]
   };
 }
 
@@ -50,20 +54,23 @@ test('lists the tileset before the map root in the manifest', () => {
   assert.deepEqual(manifest.assets.map(({ kind }) => kind), ['pixelart', 'voxelmap']);
 });
 
-test('writes a map an editor world of the editor chunk size loads', () => {
+test('writes a map an editor world of the default chunk size loads', () => {
   const files = unzip(createEditorArchive({ world: savedWorld(), tileset: kTileset, name: 'floating-tomb' }).bytes);
   const document = decodeVoxelDocument(files['maps/floating-tomb.voxelmap.json']);
-  const world = new VoxelWorld(EDITOR_TARGET.chunkSize);
+  const world = new VoxelWorld(DEFAULT_CHUNK_SIZE);
   const blocks = new BlockRegistry();
   const tilesets = new TilesetList();
-  deserializeVoxelWorld(document, world, { blocks, tilesets });
+  const materialGroups = new MaterialGroupList();
+  deserializeVoxelWorld(document, world, { blocks, tilesets, materialGroups });
 
-  assert.equal(document.chunkSize, 16);
+  assert.equal(document.chunkSize, 32);
   assert.deepEqual(document.tilesets, [
     { id: 'tomb', asset: { id: 'floating-tomb-tileset', kind: 'pixelart' }, tileSize: 32 }
   ]);
   assert.equal(world.voxelCount, 1);
+  assert.equal(world.getVoxelAt({ x: -3, y: 4, z: 70 })?.blockId, 1);
   assert.equal([...blocks][0].name, 'Sandstone');
+  assert.equal(materialGroups.get('gold')?.metalness, 0.75);
 });
 
 test('stores the atlas pixels as a pixel-art document', () => {

@@ -3,16 +3,16 @@ import type {
   BlockDefinition,
   BlockShapeID,
   FaceSlotName,
+  MaterialGroupJSON,
   TileRef,
   TilesetDefinition
 } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
-import {
-  DEFAULT_FINISH,
-  type FaceSlot,
-  type MaterialSpec,
-  type SurfaceFinish
+import type {
+  FaceSlot,
+  MaterialSpec,
+  SurfaceFinish
 } from "./materials.ts";
 import {
   TILE_SIZE,
@@ -53,6 +53,10 @@ export interface Tileset {
 export interface BlockSetOptions<Layer extends string> {
   tilesetId: string;
   layers: readonly Layer[];
+  /**
+   * Finish of each material group, by group name. Every `group` a material
+   * names needs one.
+   */
   finishes?: Record<string, SurfaceFinish>;
 }
 
@@ -67,10 +71,9 @@ export interface BlockSet<
   readonly layers: readonly Layer[];
   readonly definitions: readonly BlockDefinition[];
   /**
-   * Surface finish of the chunk material for a block surface's material
-   * group; ungrouped blocks are matte stone.
+   * The finishes as document material groups, saved with the world.
    */
-  surfaceFinish: (group: string | undefined) => SurfaceFinish;
+  readonly materialGroups: readonly MaterialGroupJSON[];
   createTileset: () => Tileset;
 }
 
@@ -115,6 +118,9 @@ export function defineBlocks<
   }
 
   for (const [key, spec] of Object.entries(materials) as [string, MaterialSpec][]) {
+    if (spec.group !== undefined && !Object.hasOwn(finishes, spec.group)) {
+      throw new Error(`blocks: material "${key}" names group "${spec.group}", which has no finish`);
+    }
     const mainTiles = Array.from({ length: spec.alternates ?? 1 }, () => allocateTile(spec.tile));
     const faceTextures = allocateFaceTiles(spec, allocateTile);
 
@@ -136,9 +142,9 @@ export function defineBlocks<
     B: blocks as unknown as MaterialBlocks<Materials>,
     layers,
     definitions,
-    surfaceFinish(group) {
-      return group !== undefined && Object.hasOwn(finishes, group) ? finishes[group] : DEFAULT_FINISH;
-    },
+    materialGroups: Object.entries(finishes).map(([id, finish]) => {
+      return { id, ...finish };
+    }),
     createTileset() {
       return paintTileset(tilesetId, tiles, definitions);
     }

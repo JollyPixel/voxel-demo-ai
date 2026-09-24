@@ -12,27 +12,19 @@ import {
 
 // CONSTANTS
 /**
- * What the voxel-map editor accepts. None of it is exported by the editor
- * packages, so the values are copied from their sources (see FEEDBACK.md).
+ * Decoded sizes the voxel-map editor's import accepts:
+ * `DEFAULT_ARCHIVE_MAX_ENTRY_BYTES` / `DEFAULT_ARCHIVE_MAX_BYTES` of
+ * `asset-server/src/archive/AssetArchive.ts`. No browser-safe entry point
+ * exports them, so they are copied here (see FEEDBACK.md).
  */
-export const EDITOR_TARGET = {
-  /**
-   * `editors/voxel-map/vite.config.ts` and `src/boot/offlineWorkspace.ts`
-   * build `voxelMapAssetKind({ chunkSize: 16 })`, and a world refuses a
-   * document of another chunk size.
-   */
-  chunkSize: 16,
-  /**
-   * `DEFAULT_ARCHIVE_MAX_ENTRY_BYTES` / `DEFAULT_ARCHIVE_MAX_BYTES` of
-   * `asset-server/src/archive/AssetArchive.ts`, checked on decoded sizes.
-   */
+export const EDITOR_ARCHIVE_LIMITS = {
   maxEntryBytes: 16 * 1024 * 1024,
   maxBytes: 64 * 1024 * 1024
 } as const;
 
 /**
  * Registered kind names: `VOXEL_MAP_KIND` and `PIXEL_ART_KIND` of the asset
- * packages, not the `voxel-map` / `pixel-art` spelling of the archive docs.
+ * packages.
  */
 const kVoxelMapKind = "voxelmap";
 const kPixelArtKind = "pixelart";
@@ -94,10 +86,9 @@ export function createEditorArchive(
     [tilesetPath]: encodePixelArtDocument(
       createPixelArtDocument({ x: width, y: height }, data)
     ),
+    // The editor re-partitions a document of another chunk size on load.
     [mapPath]: encodeVoxelDocument({
       ...world,
-      // Voxel keys are layer coordinates; only the target world's chunk size matters.
-      chunkSize: EDITOR_TARGET.chunkSize,
       tilesets: world.tilesets.map((definition) => (definition.id === tileset.id ?
         linkedTileset(definition, tilesetId) :
         definition))
@@ -147,15 +138,15 @@ function checkLimits(
   let total = 0;
   for (const [path, size] of Object.entries(entries)) {
     total += size;
-    if (size > EDITOR_TARGET.maxEntryBytes) {
+    if (size > EDITOR_ARCHIVE_LIMITS.maxEntryBytes) {
       throw new EditorArchiveError(
-        `${path} is ${mebibytes(size)} MiB; the editor refuses entries over ${mebibytes(EDITOR_TARGET.maxEntryBytes)} MiB`
+        `${path} is ${mebibytes(size)} MiB; the editor refuses entries over ${mebibytes(EDITOR_ARCHIVE_LIMITS.maxEntryBytes)} MiB`
       );
     }
   }
-  if (total > EDITOR_TARGET.maxBytes) {
+  if (total > EDITOR_ARCHIVE_LIMITS.maxBytes) {
     throw new EditorArchiveError(
-      `archive is ${mebibytes(total)} MiB decoded; the editor refuses over ${mebibytes(EDITOR_TARGET.maxBytes)} MiB`
+      `archive is ${mebibytes(total)} MiB decoded; the editor refuses over ${mebibytes(EDITOR_ARCHIVE_LIMITS.maxBytes)} MiB`
     );
   }
 }

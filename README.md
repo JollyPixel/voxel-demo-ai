@@ -47,7 +47,7 @@ The pane shows construction time by zone, total voxel count, chunk and triangle 
 
 ## Open in the voxel-map editor
 
-In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map (`maps/<world>.voxelmap.json`), its block definitions and layers, and the atlas as a pixel-art asset (`textures/<world>.pixelart`). The exporter rewrites the chunk size to the editor's 16 and links the tileset to that asset. It refuses a world over the editor's 16 MiB entry limit, which a single scene copy stays under. Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Lights, water, sky and the gold material finish are not part of the map; see F-20 to F-25 in [FEEDBACK.md](FEEDBACK.md).
+In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map (`maps/<world>.voxelmap.json`), its block definitions, material finishes and layers, and the atlas as a pixel-art asset (`textures/<world>.pixelart`). The exporter links the tileset to that asset; the editor re-partitions the map into its own chunk size on import. It refuses a world over the editor's 16 MiB entry limit, which a single scene copy stays under. Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Turn on **Reflections** in the editor's View section to see the gold finish. Lights, water and sky are not part of the map; see F-21 to F-25 in [FEEDBACK.md](FEEDBACK.md).
 
 ## Check
 

@@ -7,9 +7,10 @@ import { loadTilesets } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import { createBenchmarkPanel } from "../bench/panel.ts";
+import { DEFAULT_FINISH } from "../blocks/materials.ts";
 import { Brush } from "../builder/Brush.ts";
 import { createEffects } from "../scene/effects.ts";
-import { installGtao } from "../scene/gtao.ts";
+import { gtao as gtaoPipeline, gtaoToggle } from "../scene/gtao.ts";
 import { configureRendering, createLighting } from "../scene/lighting.ts";
 import {
   buildZones,
@@ -47,9 +48,9 @@ export async function runWorld(
     pitch: pose.pitch,
     moveSpeed: 28,
     maxMoveSpeed: 210,
-    focusMode: "none"
+    focusMode: "none",
+    postProcessing: config.gtao ? gtaoPipeline : null
   });
-  const gtao = installGtao(camera, config.gtao);
   const voxel = runtime.world.createActor("terrain").addComponentAndGet(VoxelRenderer, {
     focus: camera.actor.object3D,
     greedy: config.greedy,
@@ -64,9 +65,11 @@ export async function runWorld(
     receiveShadow: config.shadows,
     ambientOcclusion: config.ao ? AO_STRENGTH : 0,
     tileMinification: config.mips ? "average" : "nearest",
+    materialGroups: blocks.materialGroups,
+    // Grouped blocks already carry their group's finish; this runs after it.
     materialCustomizer: (material, _tilesetId, surface) => {
-      if (material instanceof THREE.MeshStandardMaterial) {
-        Object.assign(material, blocks.surfaceFinish(surface.materialGroup));
+      if (surface.materialGroup === undefined && material instanceof THREE.MeshStandardMaterial) {
+        Object.assign(material, DEFAULT_FINISH);
       }
     }
   });
@@ -99,7 +102,7 @@ export async function runWorld(
     world,
     engine,
     lighting,
-    gtao,
+    gtao: gtaoToggle(camera),
     effects,
     tileset,
     build: { seed: config.seed, copies: config.copies, timings, meshMs, chunkCount }

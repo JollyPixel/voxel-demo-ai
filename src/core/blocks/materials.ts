@@ -34,8 +34,8 @@ export interface MaterialSpec<Layer extends string = string> {
    */
   cutout?: boolean;
   /**
-   * Chunk material group, so `materialCustomizer` can tune these blocks
-   * apart from the rest of the atlas (see `surfaceFinish`).
+   * Material group whose finish, from the block set's `finishes`, these
+   * blocks render with. The finish is saved in the world document.
    */
   group?: string;
 }
@@ -45,4 +45,7 @@ export interface SurfaceFinish {
   metalness: number;
 }
 
+/**
+ * Finish of blocks outside any material group: matte stone.
+ */
 export const DEFAULT_FINISH: SurfaceFinish = { roughness: 0.89, metalness: 0 };

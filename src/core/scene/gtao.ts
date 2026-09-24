@@ -38,19 +38,19 @@ export interface Gtao {
   setEnabled: (enabled: boolean) => void;
 }
 
-export function installGtao(
-  camera: CameraComponent,
-  enabled: boolean
+/**
+ * Toggles `gtao` as the camera's pipeline, e.g. one created with
+ * `postProcessing: gtao`.
+ */
+export function gtaoToggle(
+  camera: CameraComponent
 ): Gtao {
-  function setEnabled(value: boolean): void {
-    camera.postProcessing = value ? gtao : null;
-  }
-  setEnabled(enabled);
-
   return {
     get enabled() {
       return camera.postProcessing === gtao;
     },
-    setEnabled
+    setEnabled(value) {
+      camera.postProcessing = value ? gtao : null;
+    }
   };
 }
