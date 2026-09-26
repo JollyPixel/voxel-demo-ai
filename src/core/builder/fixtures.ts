@@ -21,6 +21,10 @@ export interface WaterfallFixture {
   center: Vec3;
   width: number;
   height: number;
+  /**
+   * Horizontal axis the sheet spans; it faces along the other one.
+   */
+  axis: "x" | "z";
 }
 
 export interface PointLightFixture {

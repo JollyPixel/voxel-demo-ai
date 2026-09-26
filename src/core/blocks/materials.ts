@@ -10,9 +10,8 @@ import type { TilePainter } from "./painters/tile.ts";
  */
 export type FaceSlot = FaceSlotName | "sides";
 
-export interface MaterialSpec<Layer extends string = string> {
+export interface MaterialSpec {
   name: string;
-  layer: Layer;
   tile: TilePainter;
   /**
    * Tiles painted from the same painter with different seeds. The brush picks
@@ -43,6 +42,12 @@ export interface MaterialSpec<Layer extends string = string> {
 export interface SurfaceFinish {
   roughness: number;
   metalness: number;
+  /**
+   * Light the surface gives off by itself, e.g. a paper lantern. Cheaper
+   * than a point light, which every pixel of the frame pays for.
+   */
+  emissive?: string;
+  emissiveIntensity?: number;
 }
 
 /**

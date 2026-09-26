@@ -22,13 +22,6 @@ import {
 } from "../../core/blocks/painters/stone.ts";
 import { lowRes, Palette } from "../../core/blocks/painters/tile.ts";
 
-/**
- * World layers, from lowest to highest compositing priority: when two layers
- * hold a voxel in the same cell, the later one is drawn.
- */
-export const LAYERS = ["Terrain", "Structure", "Garden"] as const;
-export type Layer = typeof LAYERS[number];
-
 export const FINISHES = {
   gold: { roughness: 0.38, metalness: 0.75 }
 } as const satisfies Record<string, SurfaceFinish>;
@@ -65,7 +58,6 @@ export const MATERIALS = {
   // Masonry
   sandstone: {
     name: "Sandstone brick",
-    layer: "Structure",
     tile: masonry(kSandstone, { course: 8, length: 16, stagger: 8 }),
     alternates: 3,
     variants: [
@@ -76,26 +68,22 @@ export const MATERIALS = {
   },
   ashlar: {
     name: "Sandstone ashlar",
-    layer: "Structure",
     tile: masonry(kSandstone, { course: 16, length: 32, stagger: 16 }),
     alternates: 2,
     variants: ["stair", "stairCornerOuter", "slabBottom", "slabTop", "poleY"]
   },
   carved: {
     name: "Carved sandstone",
-    layer: "Structure",
     tile: lowRes(carved(kSandstone))
   },
   limestone: {
     name: "Limestone",
-    layer: "Structure",
     tile: masonry(kLimestone, { course: 16, length: 16, stagger: 8 }),
     alternates: 2,
     variants: ["stair", "stairCornerOuter", "slabBottom", "slabTop", "poleY"]
   },
   fluted: {
     name: "Fluted limestone",
-    layer: "Structure",
     tile: fluted(kLimestone),
     faces: {
       top: masonry(kLimestone, { course: 32, length: 32, stagger: 0 }),
@@ -104,26 +92,22 @@ export const MATERIALS = {
   },
   trim: {
     name: "Umber frieze",
-    layer: "Structure",
     tile: lowRes(frieze(kUmber, kOchre)),
     variants: ["stair", "stairCornerOuter", "slabTop"]
   },
   flagstone: {
     name: "Flagstone",
-    layer: "Structure",
     tile: lowRes(flagstones(kPaving)),
     alternates: 2,
     variants: ["slabBottom"]
   },
   granite: {
     name: "Dark granite",
-    layer: "Structure",
     tile: lowRes(speckledStone(kGranite, kFlecks)),
     variants: ["slabBottom", "ramp"]
   },
   tombGranite: {
     name: "Tomb granite",
-    layer: "Structure",
     tile: lowRes(speckledStone(kGreyGranite, kFlecks)),
     variants: ["slabBottom", "ramp", "poleY"]
   },
@@ -131,19 +115,16 @@ export const MATERIALS = {
   // Inlays
   lapis: {
     name: "Lapis",
-    layer: "Structure",
     tile: lowRes(inlaidStone(kLapis, kGold))
   },
   gold: {
     name: "Gold",
-    layer: "Structure",
     tile: lowRes(metal(kGold)),
     group: "gold",
     variants: ["ramp", "rampCornerOuter", "slabBottom", "stair", "stairCornerOuter"]
   },
   faience: {
     name: "Faience",
-    layer: "Structure",
     tile: lowRes(glazedTiles(kFaience)),
     variants: ["slabBottom"]
   },
@@ -151,32 +132,27 @@ export const MATERIALS = {
   // Terrain
   rock: {
     name: "Rock",
-    layer: "Terrain",
     tile: rock(kRock),
     alternates: 3
   },
   ochreRock: {
     name: "Ochre rock",
-    layer: "Terrain",
     tile: rock(kOchreRock),
     alternates: 2
   },
   basalt: {
     name: "Basalt",
-    layer: "Terrain",
     tile: rock(kBasalt),
     alternates: 2
   },
   sand: {
     name: "Sand",
-    layer: "Terrain",
     tile: rippledSand(kDesertSand),
     alternates: 2,
     faces: { sides: granular(kDesertSand), bottom: granular(kDesertSand) }
   },
   dirt: {
     name: "Dirt",
-    layer: "Terrain",
     tile: granular(kDirt),
     alternates: 2
   },
@@ -184,29 +160,25 @@ export const MATERIALS = {
   // Garden
   grass: {
     name: "Grass",
-    layer: "Garden",
     tile: grassTop(kGrass),
     alternates: 2,
     faces: { sides: grassSide(kGrass, kDirt), bottom: granular(kDirt) }
   },
   leaves: {
     name: "Leaves",
-    layer: "Garden",
     tile: foliage(kLeaves),
     alternates: 2,
     cutout: true
   },
   acaciaLeaves: {
     name: "Acacia leaves",
-    layer: "Garden",
     tile: foliage(kAcaciaLeaves),
     alternates: 2,
     cutout: true
   },
   trunk: {
     name: "Tree trunk",
-    layer: "Garden",
     tile: bark(kBark),
     variants: ["poleY"]
   }
-} as const satisfies Record<string, MaterialSpec<Layer>>;
+} as const satisfies Record<string, MaterialSpec>;

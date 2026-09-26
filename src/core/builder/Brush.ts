@@ -1,7 +1,9 @@
 // Import Third-party Dependencies
-import type {
-  VoxelTransformOptions,
-  VoxelWorld
+import {
+  VoxelTransform,
+  type VoxelPatchCells,
+  type VoxelTransformOptions,
+  type VoxelWorld
 } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
@@ -18,36 +20,44 @@ export type CellPicker = (x: number, y: number, z: number) => Block | undefined;
 
 // CONSTANTS
 const kAlternateSeed = 97;
+const kAir = 0;
 
 /**
- * The world calls a brush writes through. Wrap a large build in
- * `world.transaction()` so chunks are dirtied once rather than per voxel.
+ * The one layer every world is built in. Later writes replace earlier ones,
+ * so a world is built from the ground up: terrain, then structures, then
+ * plants.
  */
-export type BrushWorld = Pick<VoxelWorld, "getLayer" | "setVoxel" | "removeVoxel">;
+export const WORLD_LAYER = "World";
+
+/**
+ * The world calls a brush writes through.
+ */
+export type BrushWorld = Pick<VoxelWorld, "getLayer" | "patchVoxels">;
 
 interface BrushTarget {
   world: BrushWorld;
-  layers: readonly string[];
+  /**
+   * Cells written since the last `flush()`, in write order.
+   */
+  cells: VoxelPatchCells;
   fixtures: Fixtures;
 }
 
 /**
- * Writes blocks into the world in local coordinates. Each block goes to its
- * own layer, and every scene element that is not a voxel (water, lights) is
- * collected as a fixture at its world position.
+ * Writes blocks into the world's layer in local coordinates. Writes are
+ * queued as a voxel patch and reach the world on `flush()`, the engine's
+ * fastest bulk write. Every scene element that is not a voxel (water,
+ * lights) is collected as a fixture at its world position.
  */
 export class Brush {
   static forWorld(
-    world: BrushWorld,
-    layers: readonly string[]
+    world: BrushWorld
   ): Brush {
-    for (const name of layers) {
-      if (!world.getLayer(name)) {
-        throw new Error(`Brush: missing world layer "${name}"`);
-      }
+    if (!world.getLayer(WORLD_LAYER)) {
+      throw new Error(`Brush: missing world layer "${WORLD_LAYER}"`);
     }
 
-    return new Brush({ world, layers, fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
+    return new Brush({ world, cells: [], fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
   }
 
   readonly #target: BrushTarget;
@@ -66,6 +76,18 @@ export class Brush {
   }
 
   /**
+   * Writes the cells queued by this brush and every brush translated from
+   * it into the world, as one patch. Later cells replace earlier ones.
+   */
+  flush(): void {
+    const target = this.#target;
+    if (target.cells.length > 0) {
+      target.world.patchVoxels(WORLD_LAYER, target.cells);
+      target.cells = [];
+    }
+  }
+
+  /**
    * A brush drawing into the same world, with its origin moved by `offset`.
    */
   translated(
@@ -75,8 +97,9 @@ export class Brush {
   }
 
   /**
-   * Writes `block` into its layer. Blocks with alternate tiles get the one
-   * hashed from the world position, so copies and rebuilds agree.
+   * Writes `block`, replacing whatever the cell held. Blocks with alternate
+   * tiles get the one hashed from the world position, so copies and rebuilds
+   * agree.
    */
   put(
     position: Vec3,
@@ -87,7 +110,7 @@ export class Brush {
     const { ids } = block;
     const id = ids.length === 1 ? ids[0] : ids[Math.floor(hash(x, y, z, kAlternateSeed) * ids.length)];
 
-    this.#target.world.setVoxel(block.layer, { position: { x, y, z }, blockId: id, ...transform });
+    this.#target.cells.push(x, y, z, id, VoxelTransform.pack(transform));
   }
 
   box(
@@ -120,7 +143,7 @@ export class Brush {
   }
 
   /**
-   * Empties an inclusive box in every layer, e.g. to carve a doorway.
+   * Empties an inclusive box, e.g. to carve a doorway.
    */
   clear(
     from: Vec3,
@@ -128,14 +151,12 @@ export class Brush {
   ): void {
     const [x0, y0, z0] = this.#cell(from);
     const [x1, y1, z1] = this.#cell(to);
-    const { world, layers } = this.#target;
+    const { cells } = this.#target;
 
     for (let y = y0; y <= y1; y++) {
       for (let z = z0; z <= z1; z++) {
         for (let x = x0; x <= x1; x++) {
-          for (const layer of layers) {
-            world.removeVoxel(layer, { position: { x, y, z } });
-          }
+          cells.push(x, y, z, kAir, 0);
         }
       }
     }
@@ -185,14 +206,16 @@ export class Brush {
   }
 
   /**
-   * Vertical water sheet in the z/y plane, falling past `center`.
+   * Vertical water sheet falling past `center`, spanning `width` along
+   * `axis`: in the z/y plane by default, or in the x/y plane.
    */
   waterfall(
     center: Vec3,
     width: number,
-    height: number
+    height: number,
+    axis: "x" | "z" = "z"
   ): void {
-    this.#target.fixtures.waterfalls.push({ center: this.#world(center), width, height });
+    this.#target.fixtures.waterfalls.push({ center: this.#world(center), width, height, axis });
   }
 
   light(

@@ -2,13 +2,13 @@
 import * as THREE from "three/webgpu";
 import { Runtime } from "@jolly-pixel/runtime";
 import { OrbitFlyCamera } from "@jolly-pixel/engine";
-import { VoxelRenderer } from "@jolly-pixel/voxel.renderer/plugins/engine/index.ts";
+import { VoxelRenderer } from "@jolly-pixel/voxel.renderer/engine";
 import { loadTilesets } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import { createBenchmarkPanel } from "../bench/panel.ts";
 import { DEFAULT_FINISH } from "../blocks/materials.ts";
-import { Brush } from "../builder/Brush.ts";
+import { Brush, WORLD_LAYER } from "../builder/Brush.ts";
 import { createEffects } from "../scene/effects.ts";
 import { gtao as gtaoPipeline, gtaoToggle } from "../scene/gtao.ts";
 import { configureRendering, createLighting } from "../scene/lighting.ts";
@@ -55,7 +55,7 @@ export async function runWorld(
     focus: camera.actor.object3D,
     greedy: config.greedy,
     chunkSize: 32,
-    layers: [...blocks.layers],
+    layers: [WORLD_LAYER],
     blocks: tileset.blocks,
     tilesets: await loadTilesets([tileset.definition]),
     material: "standard",
@@ -77,8 +77,8 @@ export async function runWorld(
   runtime.metrics.addSource(engine.inspector);
   await runtime.load({ skipLoadingScreen: true });
 
-  const brush = Brush.forWorld(engine.world, blocks.layers);
-  const timings = engine.world.transaction(() => buildZones(world, brush, config));
+  const brush = Brush.forWorld(engine.world);
+  const timings = buildZones(world, brush, config);
 
   const effects = createEffects(brush.fixtures, atmosphere);
   scene.add(effects.root);
@@ -113,10 +113,6 @@ export async function runWorld(
   function startFrameLoop(): void {
     let last = performance.now();
     let frames = 0;
-    let drawCalls = 0;
-    runtime.renderer.on("draw", ({ source }) => {
-      drawCalls = source.info.render.drawCalls;
-    });
 
     function frame(now: number): void {
       effects.animate(Math.min(0.1, (now - last) / 1000));
@@ -124,7 +120,7 @@ export async function runWorld(
 
       if (++frames % kStatsInterval === 0) {
         const { fps = 0, ms = 0 } = runtime.stats.snapshot();
-        panel.update({ fps, frameMs: ms, mesh: engine.inspector.mesh.stats, info: renderer.info, drawCalls });
+        panel.update({ fps, frameMs: ms, mesh: engine.inspector.mesh.stats, renderer: runtime.metrics.renderer.frame });
       }
       requestAnimationFrame(frame);
     }

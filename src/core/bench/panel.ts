@@ -5,8 +5,8 @@ import {
   formatCount,
   formatMilliseconds
 } from "@jolly-pixel/ui";
+import type { RendererFrameStats } from "@jolly-pixel/runtime";
 import { ViewDistance, type VoxelEngine } from "@jolly-pixel/voxel.renderer";
-import type * as THREE from "three/webgpu";
 
 // Import Internal Dependencies
 import { AO_STRENGTH } from "../app/config.ts";
@@ -42,12 +42,7 @@ export interface FrameSample {
   fps: number;
   frameMs: number;
   mesh: { chunks: number; vertices: number; };
-  info: THREE.WebGPURenderer["info"];
-  /**
-   * Latched on the renderer's "draw": `info.render` resets on every
-   * animation-loop tick, including the ones the frame cap skips.
-   */
-  drawCalls: number;
+  renderer: RendererFrameStats;
 }
 
 /**
@@ -115,14 +110,14 @@ export function createBenchmarkPanel(
   dock.sync();
 
   return {
-    update({ fps, frameMs, mesh, info, drawCalls }) {
+    update({ fps, frameMs, mesh, renderer }) {
       stats.fps = Math.round(fps);
       stats.frameMs = Math.round(frameMs * 10) / 10;
       stats.meshed = mesh.chunks;
       stats.triangles = Math.round(mesh.vertices / 3);
-      stats.drawCalls = drawCalls;
-      stats.geometries = info.memory.geometries;
-      stats.textures = info.memory.textures;
+      stats.drawCalls = renderer.drawCalls;
+      stats.geometries = renderer.geometries;
+      stats.textures = renderer.textures;
       // Read by tests/benchmark.mjs.
       Object.assign(window, { __worldMetrics: { ...stats } });
       benchmark.refresh();
@@ -149,7 +144,9 @@ function addEditorExport(
         tileset: {
           id: tileset.definition.id,
           tileSize: tileset.definition.tileSize,
-          atlas: tileset.atlas
+          atlas: tileset.atlas,
+          blocks: tileset.blocks,
+          materialGroups: world.blocks.materialGroups
         }
       });
       const decoded = Object.values(entries).reduce((sum, size) => sum + size, 0);
@@ -178,7 +175,7 @@ function download(
 
 function addRenderToggles(
   pane: Pane,
-  { world, engine, lighting, gtao, effects }: PanelContext
+  { engine, lighting, gtao, effects }: PanelContext
 ): void {
   const options = {
     shadows: lighting.shadows,
@@ -196,11 +193,13 @@ function addRenderToggles(
   render.addBinding(options, "shadows").on("change", ({ value }) => lighting.setShadows(value));
   render.addBinding(options, "occlusion", { label: "ambient occlusion" }).on("change", ({ value }) => {
     engine.ambientOcclusion = value ? AO_STRENGTH : 0;
+    lighting.refreshShadows();
   });
   render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => gtao.setEnabled(value));
   render.addBinding(options, "greedy").on("change", ({ value }) => {
     engine.greedy = value;
     engine.markAllChunksDirty("toggle");
+    lighting.refreshShadows();
   });
   render.addBinding(options, "water").on("change", ({ value }) => {
     effects.water.visible = value;
@@ -210,6 +209,7 @@ function addRenderToggles(
   });
   render.addBinding(options, "distance", { min: 0, max: 12, step: 1 }).on("change", ({ value }) => {
     engine.viewDistance = value ? new ViewDistance({ chunks: value }) : ViewDistance.Unlimited;
+    lighting.refreshShadows();
   });
   render.addBinding(options, "wireframe").on("change", ({ value }) => {
     engine.inspector.mode = value ? "wireframe" : "off";
@@ -217,12 +217,6 @@ function addRenderToggles(
   render.addBinding(options, "chunkBounds").on("change", ({ value }) => {
     engine.inspector.chunkBounds = value;
   });
-
-  const visibleLayers = Object.fromEntries(world.blocks.layers.map((name) => [name, true]));
-  const layers = pane.addFolder({ title: "Layers" });
-  for (const name of world.blocks.layers) {
-    layers.addBinding(visibleLayers, name).on("change", ({ value }) => engine.world.setLayerVisible(name, value));
-  }
 }
 
 /**

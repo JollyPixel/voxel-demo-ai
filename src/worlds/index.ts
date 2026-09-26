@@ -5,7 +5,8 @@ type WorldLoader = () => Promise<{ default: WorldDefinition; }>;
 
 export const WORLDS: Readonly<Record<string, WorldLoader>> = {
   "floating-tomb": () => import("./floating-tomb/index.ts"),
-  "test-pad": () => import("./test-pad/index.ts")
+  "test-pad": () => import("./test-pad/index.ts"),
+  "valley-shrine": () => import("./valley-shrine/index.ts")
 };
 
 export const DEFAULT_WORLD = "floating-tomb";

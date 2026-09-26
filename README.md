@@ -5,15 +5,18 @@ Procedurally built voxel worlds and a performance demo for the JollyPixel voxel 
 | World | Description |
 |---|---|
 | `floating-tomb` (default) | An Egypt-themed floating diorama. It includes a radial garden island with a giant tree, an arched viaduct with a round garden halfway along, and a seven-tier stepped tomb with an interior courtyard, galleries, and sarcophagi. |
+| `valley-shrine` | A Japanese temple valley ringed by snow-capped mountains that sink into a cloud sea. It has a vermilion main hall inside a copper-roofed cloister, a five-storey pagoda, a koi pond with a drum bridge and a tea house, a raked dry garden, cherry groves, a stream fed by a waterfall that leaves through a gorge and falls off the edge, and an inner shrine on a mountain ledge reached by a stair of torii. |
 | `test-pad` | Every block shape in its four rotations and flip combinations |
 
 ## Layout
 
-- `src/core/` is shared by every world: the app bootstrap (`app/runWorld.ts`), the block registry and tile painters, the `Brush` and `FloatingIsland` builders, the sky, water, clouds and lighting, the benchmark pane and the editor exporter.
+- `src/core/` is shared by every world: the app bootstrap (`app/runWorld.ts`), the block registry and tile painters, the `Brush`, `FloatingIsland` and `Heightfield` builders, the sky, water, clouds and lighting, the benchmark pane and the editor exporter.
 - `src/worlds/<id>/` holds everything specific to one world: its materials (`defineBlocks`), prefabs, zones, camera views and atmosphere, gathered into a `WorldDefinition` exported by `index.ts`.
 - `src/worlds/index.ts` registers the worlds. Each one is loaded lazily, so only the selected world's tiles are painted.
 
 To add a world, create `src/worlds/<id>/index.ts` with a default-exported `WorldDefinition` and register it in `src/worlds/index.ts`.
+
+Every world is written into a single voxel layer. A later write replaces whatever the cell held, so zones build from the ground up: terrain, then structures, then plants.
 
 ## Run
 
@@ -40,14 +43,14 @@ The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performan
 | `ao` | `?ao=0` | Disable the ambient occlusion baked into chunk vertices |
 | `gtao` | `?gtao=1` | Add screen-space ambient occlusion (GTAO) as a camera post-process |
 | `mips` | `?mips=0` | Sample tiles with nearest filtering only, without the engine's distant-tile averaging (distant blocks sparkle) |
-| `view` | `?view=pyramid` | Starting camera pose from the world's views. The Floating Tomb has `overview`, `platform`, `garden`, `tree`, `path`, `arch`, `rotunda`, `pyramid`, `interior` and `waterfall` |
+| `view` | `?view=pyramid` | Starting camera pose from the world's views. The Floating Tomb has `overview`, `platform`, `garden`, `tree`, `path`, `arch`, `rotunda`, `pyramid`, `interior` and `waterfall`. The Valley Shrine has `overview`, `valley`, `temple`, `hall`, `pagoda`, `garden`, `bridge`, `drygarden`, `shrine`, `cascade`, `overlook` and `peaks` |
 | `pad` | `?pad=1` | Alias for `?world=test-pad` |
 
-The pane shows construction time by zone, total voxel count, chunk and triangle counts, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, meshing, layers, effects, view distance, and inspector overlays. The save/load button reports round trip time and JSON size.
+The pane shows construction time by zone, total voxel count, chunk and triangle counts, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, meshing, effects, view distance, and inspector overlays. The scene and the sun never move, so the sun's shadow map is drawn once after meshing and again only when a toggle rebuilds the chunks. The save/load button reports round trip time and JSON size.
 
 ## Open in the voxel-map editor
 
-In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map (`maps/<world>.voxelmap.json`), its block definitions, material finishes and layers, and the atlas as a pixel-art asset (`textures/<world>.pixelart`). The exporter links the tileset to that asset; the editor re-partitions the map into its own chunk size on import. It refuses a world over the editor's 16 MiB entry limit, which a single scene copy stays under. Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Turn on **Reflections** in the editor's View section to see the gold finish. Lights, water and sky are not part of the map; see F-21 to F-25 in [FEEDBACK.md](FEEDBACK.md).
+In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map's layers (`maps/<world>.voxelmap.json`, a version 2 document) and a tileset asset (`tilesets/<world>.tileset.json`) with the atlas pixels, block definitions and material finishes. The exporter links the map's tileset to that asset in slot 0; the editor re-partitions the map into its own chunk size on import. It refuses a world over the voxel-map editor's import limits (64 MiB per entry, 128 MiB in total, decoded). One copy of either world fits: the Valley Shrine's map is 21.5 MiB and its tileset 0.4 MiB (see F-9). Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Turn on **Reflections** in the editor's View section to see the gold finish. Lights, water and sky belong to the scene, not the map. See F-9 to F-11 in [FEEDBACK.md](FEEDBACK.md) for the open interop issues.
 
 ## Check
 

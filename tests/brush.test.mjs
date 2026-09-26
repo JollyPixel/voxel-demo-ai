@@ -1,23 +1,37 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { VoxelTransform, voxelPatchCells } from '@jolly-pixel/voxel.renderer';
 import { Brush } from '../src/core/builder/Brush.ts';
 import { outerCorner, rising } from '../src/core/builder/orientation.ts';
 import { createRandom } from '../src/core/utils/random.ts';
 
-const kStone = { ids: [1], layer: 'Structure' };
-const kStair = { ids: [2], layer: 'Structure' };
-const kLeaves = { ids: [3], layer: 'Garden' };
-const kRock = { ids: [4, 5, 6], layer: 'Terrain' };
+const kStone = { ids: [1] };
+const kStair = { ids: [2] };
+const kLeaves = { ids: [3] };
+const kRock = { ids: [4, 5, 6] };
 
+/**
+ * A brush over a fake world. `cells` holds what the world received, keyed by
+ * `layer|x,y,z`; call `brush.flush()` before reading it.
+ */
 function recordingBrush() {
   const cells = new Map();
   const world = {
     getLayer: (name) => ({ name }),
-    setVoxel(name, { position: { x, y, z }, ...entry }) { cells.set(`${name}|${x},${y},${z}`, entry); },
-    removeVoxel(name, { position: { x, y, z } }) { cells.delete(`${name}|${x},${y},${z}`); }
+    patchVoxels(name, patch) {
+      for (const { x, y, z, blockId, transform } of voxelPatchCells(patch)) {
+        const key = `${name}|${x},${y},${z}`;
+        if (blockId === 0) {
+          cells.delete(key);
+        }
+        else {
+          cells.set(key, { blockId, transform: VoxelTransform.fromPacked(transform) });
+        }
+      }
+    }
   };
 
-  return { brush: Brush.forWorld(world, ['Terrain', 'Structure', 'Garden']), cells };
+  return { brush: Brush.forWorld(world), cells };
 }
 
 test('seeded random sequence is repeatable', () => {
@@ -30,6 +44,7 @@ test('seeded random sequence is repeatable', () => {
 test('disc contains lattice points inside the requested radius', () => {
   const { brush, cells } = recordingBrush();
   brush.disc([3, 8, -2], 2, kStone);
+  brush.flush();
   assert.equal(cells.size, 13);
   for (const key of cells.keys()) {
     const [x, y, z] = key.split('|')[1].split(',').map(Number);
@@ -38,11 +53,28 @@ test('disc contains lattice points inside the requested radius', () => {
   }
 });
 
-test('blocks are written to their own layer', () => {
+test('later writes replace earlier ones in the world layer', () => {
   const { brush, cells } = recordingBrush();
   brush.put([0, 0, 0], kStone);
   brush.put([0, 1, 0], kLeaves);
-  assert.deepEqual([...cells.keys()], ['Structure|0,0,0', 'Garden|0,1,0']);
+  brush.put([0, 0, 0], kLeaves);
+  assert.equal(cells.size, 0);
+  brush.flush();
+  assert.deepEqual([...cells.keys()], ['World|0,0,0', 'World|0,1,0']);
+  assert.equal(cells.get('World|0,0,0').blockId, 3);
+});
+
+test('flush sends each queued cell once', () => {
+  const patches = [];
+  const brush = Brush.forWorld({
+    getLayer: (name) => ({ name }),
+    patchVoxels: (name, cells) => patches.push([name, cells])
+  });
+  brush.flush();
+  brush.put([0, 0, 0], kStone);
+  brush.flush();
+  brush.flush();
+  assert.deepEqual(patches, [['World', [0, 0, 0, 1, 0]]]);
 });
 
 test('alternate tiles are chosen from the world position', () => {
@@ -50,28 +82,32 @@ test('alternate tiles are chosen from the world position', () => {
   const second = recordingBrush();
   first.brush.box([0, 0, 0], [9, 0, 9], kRock);
   second.brush.translated([5, 0, 0]).box([-5, 0, 0], [4, 0, 9], kRock);
+  first.brush.flush();
+  second.brush.flush();
   const ids = [...first.cells.values()].map(({ blockId }) => blockId);
   assert.deepEqual(new Set(ids), new Set(kRock.ids));
   assert.deepEqual(ids, [...second.cells.values()].map(({ blockId }) => blockId));
 });
 
-test('clear empties every layer', () => {
+test('clear empties the box only', () => {
   const { brush, cells } = recordingBrush();
   brush.put([0, 0, 0], kStone);
-  brush.put([0, 0, 0], kLeaves);
   brush.put([1, 0, 0], kStone);
   brush.clear([0, 0, 0], [0, 0, 0]);
-  assert.deepEqual([...cells.keys()], ['Structure|1,0,0']);
+  brush.flush();
+  assert.deepEqual([...cells.keys()], ['World|1,0,0']);
 });
 
 test('translated brushes compose offsets, rotations and flips', () => {
   const { brush, cells } = recordingBrush();
   const translated = brush.translated([40, 0, -20]).translated([0, 1, 0]);
   translated.put([1, 2, 3], kStair, { ...rising('W'), flipY: true });
-  const [[key, entry]] = cells;
-  assert.equal(key, 'Structure|41,3,-17');
-  assert.equal(entry.rotation, 3);
-  assert.equal(entry.flipY, true);
+  // Translated brushes share their parent's queue.
+  translated.flush();
+  const [[key, { transform }]] = cells;
+  assert.equal(key, 'World|41,3,-17');
+  assert.equal(transform.rotation, 3);
+  assert.equal(transform.flipY, true);
 });
 
 test('orientation helpers follow the engine rotation table', () => {

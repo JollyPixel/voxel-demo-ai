@@ -2,33 +2,55 @@
 import { zipSync } from "fflate";
 import {
   createPixelArtDocument,
-  encodePixelArtDocument
+  type PixelArtDocumentData
 } from "@jolly-pixel/pixel-draw.renderer";
 import {
   encodeVoxelDocument,
+  TilesetDocument,
+  type BlockDefinition,
+  type MaterialGroupJSON,
   type TilesetDefinition,
+  type TilesetDocumentJSON,
   type VoxelWorldJSON
 } from "@jolly-pixel/voxel.renderer";
 
-// CONSTANTS
 /**
- * Decoded sizes the voxel-map editor's import accepts:
- * `DEFAULT_ARCHIVE_MAX_ENTRY_BYTES` / `DEFAULT_ARCHIVE_MAX_BYTES` of
- * `asset-server/src/archive/AssetArchive.ts`. No browser-safe entry point
- * exports them, so they are copied here (see FEEDBACK.md).
+ * Decoded size caps of an archive, in bytes: the asset server's
+ * `ArchiveLimits`.
  */
-export const EDITOR_ARCHIVE_LIMITS = {
-  maxEntryBytes: 16 * 1024 * 1024,
-  maxBytes: 64 * 1024 * 1024
-} as const;
+export interface ArchiveLimits {
+  maxEntryBytes: number;
+  maxBytes: number;
+}
+
+// CONSTANTS
+const kMiB = 1024 * 1024;
 
 /**
- * Registered kind names: `VOXEL_MAP_KIND` and `PIXEL_ART_KIND` of the asset
- * packages.
+ * Decoded sizes the voxel-map editor's import accepts: the
+ * `catalogArchiveLimits` of its `WORLD_BACKEND_TUNING`
+ * (`editors/voxel-map/src/boot/worldProject.ts`), which the editor package
+ * does not export.
+ */
+export const EDITOR_ARCHIVE_LIMITS: Readonly<ArchiveLimits> = {
+  maxEntryBytes: 64 * kMiB,
+  maxBytes: 128 * kMiB
+};
+
+/**
+ * Registered kind names and the tileset document version: `VOXEL_MAP_KIND`,
+ * `TILESET_KIND` and `TILESET_DOCUMENT_VERSION` of the asset packages.
  */
 const kVoxelMapKind = "voxelmap";
-const kPixelArtKind = "pixelart";
+const kTilesetKind = "tileset";
+const kTilesetDocumentVersion = 1;
 const kManifestPath = "bundle.json";
+
+/**
+ * Slot the exported tileset takes in the map. The demo registers its blocks
+ * under their local ids, which are the world ids of slot 0.
+ */
+const kTilesetSlot = 0;
 
 export interface EditorArchiveTileset {
   /**
@@ -37,6 +59,8 @@ export interface EditorArchiveTileset {
   id: string;
   tileSize: number;
   atlas: Pick<ImageData, "width" | "height" | "data">;
+  blocks: Iterable<BlockDefinition>;
+  materialGroups: Iterable<MaterialGroupJSON>;
 }
 
 export interface EditorArchiveOptions {
@@ -51,6 +75,10 @@ export interface EditorArchiveOptions {
    * the previous one instead of piling up copies.
    */
   name: string;
+  /**
+   * @default EDITOR_ARCHIVE_LIMITS
+   */
+  limits?: Readonly<ArchiveLimits>;
 }
 
 export interface EditorArchive {
@@ -61,31 +89,37 @@ export interface EditorArchive {
   entries: Record<string, number>;
 }
 
+/**
+ * A `.tileset.json` asset: the voxel-map editor's `TilesetAssetDocument`.
+ */
+interface TilesetAssetDocument extends TilesetDocumentJSON {
+  version: typeof kTilesetDocumentVersion;
+  pixels: PixelArtDocumentData;
+}
+
 export class EditorArchiveError extends Error {}
 
 /**
- * Packs a saved world and its atlas as a `.zip` the voxel-map editor imports
- * from Map Config: a `.voxelmap.json` root, the atlas as a `.pixelart` asset
- * it references, and the `bundle.json` manifest.
+ * Packs a saved world and its blocks as a `.zip` the voxel-map editor imports
+ * from Map Config: a `.voxelmap.json` root, the `.tileset.json` asset it
+ * links (atlas pixels, tile size, blocks and material groups), and the
+ * `bundle.json` manifest.
  */
 export function createEditorArchive(
   options: EditorArchiveOptions
 ): EditorArchive {
-  const { world, tileset, name } = options;
+  const { world, tileset, name, limits = EDITOR_ARCHIVE_LIMITS } = options;
   const mapId = `${name}-map`;
   const tilesetId = `${name}-tileset`;
   const mapPath = `maps/${name}.voxelmap.json`;
-  const tilesetPath = `textures/${name}.pixelart`;
+  const tilesetPath = `tilesets/${name}.tileset.json`;
 
   if (!world.tilesets.some(({ id }) => id === tileset.id)) {
     throw new EditorArchiveError(`world has no tileset "${tileset.id}"`);
   }
 
-  const { width, height, data } = tileset.atlas;
   const files: Record<string, Uint8Array> = {
-    [tilesetPath]: encodePixelArtDocument(
-      createPixelArtDocument({ x: width, y: height }, data)
-    ),
+    [tilesetPath]: encodeJSON(tilesetAssetDocument(tileset)),
     // The editor re-partitions a document of another chunk size on load.
     [mapPath]: encodeVoxelDocument({
       ...world,
@@ -98,7 +132,7 @@ export function createEditorArchive(
       root: { id: mapId, kind: kVoxelMapKind },
       // Dependencies first, root last: import follows this order.
       assets: [
-        { id: tilesetId, kind: kPixelArtKind, path: tilesetPath },
+        { id: tilesetId, kind: kTilesetKind, path: tilesetPath },
         { id: mapId, kind: kVoxelMapKind, path: mapPath }
       ]
     }, null, 2))
@@ -107,7 +141,7 @@ export function createEditorArchive(
   const entries = Object.fromEntries(
     Object.entries(files).map(([path, bytes]) => [path, bytes.byteLength])
   );
-  checkLimits(entries);
+  checkLimits(entries, limits);
 
   return {
     // fflate allocates the output, so it never views a SharedArrayBuffer.
@@ -117,9 +151,26 @@ export function createEditorArchive(
 }
 
 /**
- * The editor reads a tileset's pixels from the catalog asset named by
- * `asset` and ignores `src`. `cols` and `rows` are dropped so they follow the
- * pixel document if it is resized in the editor.
+ * The stored form of a tileset asset. `TilesetDocument` makes the blocks
+ * tileset-local: their tile references name no tileset, and the editor
+ * projects them into the map's slot on load.
+ */
+function tilesetAssetDocument(
+  { tileSize, atlas, blocks, materialGroups }: EditorArchiveTileset
+): TilesetAssetDocument {
+  const { width, height, data } = atlas;
+  const document = new TilesetDocument({ tileSize, blocks, materialGroups });
+
+  return {
+    version: kTilesetDocumentVersion,
+    pixels: createPixelArtDocument({ x: width, y: height }, data),
+    ...document.toJSON()
+  };
+}
+
+/**
+ * The editor reads a tileset's pixels, tile size and blocks from the catalog
+ * asset named by `asset`, so the link keeps only its id and slot.
  */
 function linkedTileset(
   definition: TilesetDefinition,
@@ -127,26 +178,33 @@ function linkedTileset(
 ): TilesetDefinition {
   return {
     id: definition.id,
-    asset: { id: assetId, kind: kPixelArtKind },
-    tileSize: definition.tileSize
+    slot: kTilesetSlot,
+    asset: { id: assetId, kind: kTilesetKind }
   };
 }
 
+function encodeJSON(
+  value: unknown
+): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(value));
+}
+
 function checkLimits(
-  entries: Record<string, number>
+  entries: Record<string, number>,
+  { maxEntryBytes, maxBytes }: Readonly<ArchiveLimits>
 ): void {
   let total = 0;
   for (const [path, size] of Object.entries(entries)) {
     total += size;
-    if (size > EDITOR_ARCHIVE_LIMITS.maxEntryBytes) {
+    if (size > maxEntryBytes) {
       throw new EditorArchiveError(
-        `${path} is ${mebibytes(size)} MiB; the editor refuses entries over ${mebibytes(EDITOR_ARCHIVE_LIMITS.maxEntryBytes)} MiB`
+        `${path} is ${mebibytes(size)} MiB; the editor refuses entries over ${mebibytes(maxEntryBytes)} MiB`
       );
     }
   }
-  if (total > EDITOR_ARCHIVE_LIMITS.maxBytes) {
+  if (total > maxBytes) {
     throw new EditorArchiveError(
-      `archive is ${mebibytes(total)} MiB decoded; the editor refuses over ${mebibytes(EDITOR_ARCHIVE_LIMITS.maxBytes)} MiB`
+      `archive is ${mebibytes(total)} MiB decoded; the editor refuses over ${mebibytes(maxBytes)} MiB`
     );
   }
 }
@@ -154,5 +212,5 @@ function checkLimits(
 function mebibytes(
   bytes: number
 ): string {
-  return (bytes / 1048576).toFixed(1);
+  return (bytes / kMiB).toFixed(1);
 }

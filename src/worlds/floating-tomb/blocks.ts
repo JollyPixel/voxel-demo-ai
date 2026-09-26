@@ -1,11 +1,10 @@
 // Import Internal Dependencies
 import { defineBlocks } from "../../core/blocks/registry.ts";
 import type { IslandBlocks } from "../../core/builder/FloatingIsland.ts";
-import { FINISHES, LAYERS, MATERIALS } from "./materials.ts";
+import { FINISHES, MATERIALS } from "./materials.ts";
 
 export const BLOCKS = defineBlocks(MATERIALS, {
   tilesetId: "tomb",
-  layers: LAYERS,
   finishes: FINISHES
 });
 

@@ -182,3 +182,28 @@ export function foliage(
     }
   };
 }
+
+/**
+ * `base` scattered with small flowers: a bright centre with four petals,
+ * each flower in one of the `petals` palettes.
+ */
+export function flowers(
+  base: TilePainter,
+  petals: readonly Palette[],
+  count = 14
+): TilePainter {
+  return (tile) => {
+    base(tile);
+    for (let flower = 0; flower < count; flower++) {
+      const u = Math.floor(tile.noise(flower, 0, 30) * tile.size);
+      const v = Math.floor(tile.noise(flower, 1, 31) * tile.size);
+      const palette = petals[Math.floor(tile.noise(flower, 2, 32) * petals.length)];
+      const top = palette.size - 1;
+      tile.set(u, v - 1, palette.at(top - 1));
+      tile.set(u - 1, v, palette.at(top - 1));
+      tile.set(u + 1, v, palette.at(top - 2));
+      tile.set(u, v + 1, palette.at(top - 2));
+      tile.set(u, v, palette.at(top));
+    }
+  };
+}

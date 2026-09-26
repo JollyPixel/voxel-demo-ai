@@ -17,12 +17,17 @@ export interface LightingOptions {
   /**
    * The voxel view, whose chunk meshes carry shadow flags of their own.
    */
-  chunks: { castShadow: boolean; receiveShadow: boolean; };
+  chunks: { castShadow: boolean; receiveShadow: boolean; whenIdle: () => Promise<void>; };
 }
 
 export interface Lighting {
   readonly shadows: boolean;
   setShadows: (enabled: boolean) => void;
+  /**
+   * Redraws the sun's shadow map once the chunks have finished meshing. The
+   * scene and the sun are static, so the map is only drawn on request.
+   */
+  refreshShadows: () => void;
 }
 
 /**
@@ -59,11 +64,17 @@ export function createLighting(
     scene.add(light);
   }
 
+  function refreshShadows(): void {
+    void options.chunks.whenIdle().then(() => {
+      sun.shadow.needsUpdate = true;
+    });
+  }
   function setShadows(enabled: boolean): void {
     sun.castShadow = enabled;
     renderer.shadowMap.enabled = enabled;
     options.chunks.castShadow = enabled;
     options.chunks.receiveShadow = enabled;
+    refreshShadows();
   }
   setShadows(options.shadows);
 
@@ -71,7 +82,8 @@ export function createLighting(
     get shadows() {
       return sun.castShadow;
     },
-    setShadows
+    setShadows,
+    refreshShadows
   };
 }
 
@@ -91,6 +103,7 @@ function createSun(
   sun.position.copy(centre).addScaledVector(sunDirection(atmosphere), radius * 2);
 
   const { shadow } = sun;
+  shadow.autoUpdate = false;
   shadow.mapSize.set(4096, 4096);
   shadow.bias = -0.0002;
   shadow.normalBias = 0.02;

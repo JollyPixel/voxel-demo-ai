@@ -95,10 +95,10 @@ function createWater(
     group.add(pool);
   }
 
-  const falling = createWaterfallMaterial();
-  for (const { center: [x, y, z], width, height } of waterfalls) {
-    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(width, height), falling);
-    sheet.rotation.y = Math.PI / 2;
+  const falling = { x: createWaterfallMaterial("x"), z: createWaterfallMaterial("z") };
+  for (const { center: [x, y, z], width, height, axis } of waterfalls) {
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(width, height), falling[axis]);
+    sheet.rotation.y = axis === "z" ? Math.PI / 2 : 0;
     sheet.position.set(x, y, z);
     group.add(sheet);
   }
@@ -159,7 +159,9 @@ function createPoolMaterial(
  * down, thinning at the sides and fading out as the sheet drops into the
  * clouds.
  */
-function createWaterfallMaterial(): THREE.MeshBasicNodeMaterial {
+function createWaterfallMaterial(
+  axis: "x" | "z"
+): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
     transparent: true,
     side: THREE.DoubleSide,
@@ -167,12 +169,13 @@ function createWaterfallMaterial(): THREE.MeshBasicNodeMaterial {
     fog: true
   });
 
+  const across = axis === "z" ? positionWorld.z : positionWorld.x;
   const flow = positionWorld.y.add(time.mul(9)).mul(0.08);
-  const streaks = mx_noise_float(vec3(positionWorld.z.mul(2.2), flow, time.mul(0.2)))
-    .add(mx_noise_float(vec3(positionWorld.z.mul(5), flow.mul(2.5), 3)).mul(0.5));
+  const streaks = mx_noise_float(vec3(across.mul(2.2), flow, time.mul(0.2)))
+    .add(mx_noise_float(vec3(across.mul(5), flow.mul(2.5), 3)).mul(0.5));
   const foam = smoothstep(float(0.05), float(0.6), streaks);
-  const { x: across, y: along } = uv();
-  const sides = smoothstep(float(0), float(0.18), across).mul(smoothstep(float(1), float(0.82), across));
+  const { x: edge, y: along } = uv();
+  const sides = smoothstep(float(0), float(0.18), edge).mul(smoothstep(float(1), float(0.82), edge));
   const lip = smoothstep(float(0.985), float(1), along);
 
   material.colorNode = mix(color("#3f9fb6"), color("#effcff"), max(foam, lip));

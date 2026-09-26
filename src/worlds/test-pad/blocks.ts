@@ -17,12 +17,9 @@ const kFlecks = new Palette("#15161a", "#9a968f");
 const kLapis = new Palette("#0f2447", "#16336a", "#1f4589", "#2b58a6", "#3a6fc2");
 const kGold = new Palette("#7a5410", "#a8761b", "#d09a2a", "#eebd45", "#fbd970", "#fff2b5");
 
-const kLayers = ["Structure"] as const;
-
 const kMaterials = {
   sandstone: {
     name: "Sandstone brick",
-    layer: "Structure",
     tile: masonry(kSandstone, { course: 8, length: 16, stagger: 8 }),
     variants: [
       "stair", "stairCornerInner", "stairCornerOuter",
@@ -32,30 +29,25 @@ const kMaterials = {
   },
   limestone: {
     name: "Limestone",
-    layer: "Structure",
     tile: masonry(kLimestone, { course: 16, length: 16, stagger: 8 })
   },
   granite: {
     name: "Dark granite",
-    layer: "Structure",
     tile: lowRes(speckledStone(kGranite, kFlecks))
   },
   lapis: {
     name: "Lapis",
-    layer: "Structure",
     tile: lowRes(inlaidStone(kLapis, kGold))
   },
   gold: {
     name: "Gold",
-    layer: "Structure",
     tile: lowRes(metal(kGold)),
     group: "gold"
   }
-} as const satisfies Record<string, MaterialSpec<typeof kLayers[number]>>;
+} as const satisfies Record<string, MaterialSpec>;
 
 export const BLOCKS = defineBlocks(kMaterials, {
   tilesetId: "test-pad",
-  layers: kLayers,
   finishes: { gold: { roughness: 0.38, metalness: 0.75 } }
 });
 

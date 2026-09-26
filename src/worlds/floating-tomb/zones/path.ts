@@ -80,6 +80,16 @@ function buildPier(
   random: Random
 ): void {
   const bottom = kDeck - kPierDepth;
+  // The islet first, so the pier's foot replaces the ground it stands on.
+  const islet = new FloatingIsland({
+    radius: 9,
+    depth: 12,
+    surface: "grass",
+    flatRadius: 5,
+    seed: Math.floor(random() * 2 ** 31),
+    blocks: ISLAND_BLOCKS
+  });
+  islet.build(b.translated([x, bottom - GROUND, 0]));
 
   b.fill([x - kPierHalf.x, bottom, -kPierHalf.z], [x + kPierHalf.x, kDeck - 1, kPierHalf.z], (px, y, z) => {
     let inset = 0;
@@ -99,16 +109,6 @@ function buildPier(
 
     return face && Math.abs(z) % 4 === 0 ? B.limestone : B.ashlar;
   });
-
-  const islet = new FloatingIsland({
-    radius: 9,
-    depth: 12,
-    surface: "grass",
-    flatRadius: 5,
-    seed: Math.floor(random() * 2 ** 31),
-    blocks: ISLAND_BLOCKS
-  });
-  islet.build(b.translated([x, bottom - GROUND, 0]));
 }
 
 /**

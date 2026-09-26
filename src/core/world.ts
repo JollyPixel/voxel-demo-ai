@@ -57,7 +57,8 @@ export interface WorldDefinition {
 export type ZoneTimings = Record<string, number>;
 
 /**
- * Builds `copies` copies of the world's scene from `seed`.
+ * Builds `copies` copies of the world's scene from `seed`. Each zone's cells
+ * are flushed to the world as one patch once it is built.
  */
 export function buildZones(
   world: WorldDefinition,
@@ -72,6 +73,7 @@ export function buildZones(
     for (const zone of world.zones) {
       const start = performance.now();
       zone.build(copy.translated(zone.origin), random);
+      brush.flush();
       timings[zone.name] += performance.now() - start;
     }
   }

@@ -4,8 +4,8 @@ import type {
   BlockShapeID,
   FaceSlotName,
   MaterialGroupJSON,
-  TileRef,
-  TilesetDefinition
+  ResolvedTilesetDefinition,
+  TileRef
 } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
@@ -25,12 +25,11 @@ const kAtlasCols = 8;
 const kSideSlots: readonly FaceSlotName[] = ["right", "left", "front", "back"];
 
 /**
- * A placeable block: the registry ids of its interchangeable tiles (one per
- * alternate) and the layer it is written to.
+ * A placeable block: the registry ids of its interchangeable tiles, one per
+ * alternate.
  */
 export interface Block {
   readonly ids: readonly number[];
-  readonly layer: string;
 }
 
 type FaceTextures = Partial<Record<FaceSlotName, TileRef>>;
@@ -42,7 +41,7 @@ export type MaterialBlocks<Materials extends Record<string, MaterialSpec>> = {
 };
 
 export interface Tileset {
-  definition: TilesetDefinition;
+  definition: ResolvedTilesetDefinition;
   blocks: BlockDefinition[];
   /**
    * The painted atlas as RGBA8, for exporters that cannot read the data URL.
@@ -50,9 +49,8 @@ export interface Tileset {
   atlas: ImageData;
 }
 
-export interface BlockSetOptions<Layer extends string> {
+export interface BlockSetOptions {
   tilesetId: string;
-  layers: readonly Layer[];
   /**
    * Finish of each material group, by group name. Every `group` a material
    * names needs one.
@@ -61,14 +59,12 @@ export interface BlockSetOptions<Layer extends string> {
 }
 
 export interface BlockSet<
-  Materials extends Record<string, MaterialSpec> = Record<string, MaterialSpec>,
-  Layer extends string = string
+  Materials extends Record<string, MaterialSpec> = Record<string, MaterialSpec>
 > {
   /**
    * Block handles by material, e.g. `B.gold` or `B.sandstone.stair`.
    */
   readonly B: MaterialBlocks<Materials>;
-  readonly layers: readonly Layer[];
   readonly definitions: readonly BlockDefinition[];
   /**
    * The finishes as document material groups, saved with the world.
@@ -82,13 +78,12 @@ export interface BlockSet<
  * one block per shape variant, and collects the tiles to paint.
  */
 export function defineBlocks<
-  const Layer extends string,
-  const Materials extends Record<string, MaterialSpec<Layer>>
+  const Materials extends Record<string, MaterialSpec>
 >(
   materials: Materials,
-  options: BlockSetOptions<Layer>
-): BlockSet<Materials, Layer> {
-  const { tilesetId, layers, finishes = {} } = options;
+  options: BlockSetOptions
+): BlockSet<Materials> {
+  const { tilesetId, finishes = {} } = options;
   const definitions: BlockDefinition[] = [];
   const tiles: TilePainter[] = [];
   const blocks: Record<string, Block> = {};
@@ -133,14 +128,13 @@ export function defineBlocks<
     ));
     const variants = (spec.variants ?? []).map((shape) => [
       shape,
-      { ids: [define(spec, `${spec.name} ${shape}`, shape, mainTiles[0], faceTextures)], layer: spec.layer }
+      { ids: [define(spec, `${spec.name} ${shape}`, shape, mainTiles[0], faceTextures)] }
     ]);
-    blocks[key] = { ids, layer: spec.layer, ...Object.fromEntries(variants) };
+    blocks[key] = { ids, ...Object.fromEntries(variants) };
   }
 
   return {
     B: blocks as unknown as MaterialBlocks<Materials>,
-    layers,
     definitions,
     materialGroups: Object.entries(finishes).map(([id, finish]) => {
       return { id, ...finish };
@@ -204,4 +198,17 @@ function paintTileset(
     blocks: definitions,
     atlas: context.getImageData(0, 0, canvas.width, canvas.height)
   };
+}
+
+/**
+ * One of `block`'s alternate tiles as a block of its own, so a builder can
+ * keep neighbouring voxels on the same tile and let their faces merge.
+ */
+export function alternateOf(
+  block: Block,
+  index: number
+): Block {
+  const { ids } = block;
+
+  return { ids: [ids[((index % ids.length) + ids.length) % ids.length]] };
 }
