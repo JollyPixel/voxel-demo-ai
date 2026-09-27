@@ -41,6 +41,12 @@ const kDefaultFarChunks = 8;
 const kDefaultLodChunks = 12;
 
 /**
+ * Upper bound of the `workers` parameter.
+ */
+const kMaxWorkers = 16;
+const kDefaultWorkers = 4;
+
+/**
  * Demo settings, read from the page's query string (see README).
  */
 export interface DemoConfig {
@@ -87,6 +93,12 @@ export interface DemoConfig {
    */
   lod: number;
   /**
+   * Web Workers that mesh chunks; 0 meshes on the main thread. Workers need a
+   * cross-origin isolated page; without one the engine meshes on the main
+   * thread and logs a warning.
+   */
+  workers: number;
+  /**
    * Starting camera pose; the world's default when absent or unknown.
    */
   view: string | null;
@@ -102,11 +114,11 @@ export function readConfig(
     return Math.max(min, Math.min(max, Number(params.get(key)) || fallback));
   }
 
-  // Unlike clamped(), 0 is a valid value: it turns the distance off.
-  function chunks(key: string, fallback: number): number {
+  // Unlike clamped(), 0 is a valid value: distances and workers turn off.
+  function count(key: string, fallback: number, max: number): number {
     const value = Number(params.get(key) ?? Number.NaN);
 
-    return Number.isFinite(value) ? Math.max(0, Math.min(MAX_DETAIL_CHUNKS, Math.round(value))) : fallback;
+    return Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : fallback;
   }
 
   return {
@@ -120,8 +132,17 @@ export function readConfig(
     gtao: params.get("gtao") === "1",
     oit: params.get("oit") === "1",
     mips: params.get("mips") !== "0",
-    far: chunks("far", kDefaultFarChunks),
-    lod: chunks("lod", kDefaultLodChunks),
+    far: count("far", kDefaultFarChunks, MAX_DETAIL_CHUNKS),
+    lod: count("lod", kDefaultLodChunks, MAX_DETAIL_CHUNKS),
+    workers: count("workers", defaultWorkerCount(), kMaxWorkers),
     view: params.get("view")
   };
+}
+
+/**
+ * Four workers stalled the main thread less than one per core on the Valley
+ * Shrine (FEEDBACK F-13); a spare core is left for the page.
+ */
+function defaultWorkerCount(): number {
+  return Math.max(1, Math.min(kDefaultWorkers, navigator.hardwareConcurrency - 1));
 }

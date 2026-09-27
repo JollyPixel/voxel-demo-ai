@@ -74,6 +74,12 @@ export async function runWorld(
     ambientOcclusion: config.ao ? AO_STRENGTH : 0,
     tileMinification: config.mips ? "average" : "nearest",
     materialGroups: blocks.materialGroups,
+    meshWorkers: config.workers > 0 ?
+      {
+        count: config.workers,
+        createWorker: () => new Worker(new URL("./meshWorker.ts", import.meta.url), { type: "module" })
+      } :
+      undefined,
     // Grouped blocks already carry their group's finish; this runs after it.
     materialCustomizer: (material, _tilesetId, surface) => {
       if (surface.materialGroup === undefined && material instanceof THREE.MeshStandardMaterial) {
@@ -102,8 +108,14 @@ export async function runWorld(
   const chunkCount = [...engine.world.getAllChunks()].length;
   // The first build runs before VoxelRenderer samples its focus (FEEDBACK F-12).
   engine.focus = camera.actor.object3D.getWorldPosition(new THREE.Vector3());
+  /*
+   * flush() meshes on the main thread even with workers; the frame loop
+   * started by runtime.load() ticks the engine, which feeds the workers.
+   */
   const meshMs = await measureAsync(async() => {
-    engine.flush();
+    if (!meshesInWorkers(config)) {
+      engine.flush();
+    }
     await engine.whenIdle();
   });
   loading.remove();
@@ -115,7 +127,14 @@ export async function runWorld(
     pipeline,
     effects,
     tileset,
-    build: { seed: config.seed, copies: config.copies, timings, meshMs, chunkCount }
+    build: {
+      seed: config.seed,
+      copies: config.copies,
+      timings,
+      meshMs,
+      chunkCount,
+      workers: meshesInWorkers(config) ? config.workers : 0
+    }
   });
   startFrameLoop();
   logBuild(timings);
@@ -150,6 +169,15 @@ export async function runWorld(
       ...zoneTimings
     });
   }
+}
+
+/**
+ * The engine ignores `meshWorkers` without SharedArrayBuffer.
+ */
+function meshesInWorkers(
+  config: DemoConfig
+): boolean {
+  return config.workers > 0 && globalThis.crossOriginIsolated;
 }
 
 function showLoading(message: string): HTMLElement {

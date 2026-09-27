@@ -38,6 +38,13 @@ Measured in headless Chrome on the test machine, on the Valley Shrine (565k voxe
 - Workaround used: `runWorld` sets `engine.focus` from the camera's world position before `flush()`. The build now meshes at 2.89M triangles directly, with no burst after load.
 - Suggestion: Sample the focus in `VoxelRenderer.awake()` or at the start of `engine.flush()`, or document that a pre-loop flush needs `engine.focus`.
 
+### [F-13] Mesh workers leave half-resolution chunks to the tick budget
+- Area: view · Severity: perf
+- Context: Switching the first build from `flush()` to mesh workers (`?workers=`), then waiting for `whenIdle()` while the frame loop ticks. Production build, headless Chrome, 24 cores, best of 3–4 runs.
+- What happened: Workers finish their chunks quickly (213 of the Valley Shrine's 476 in about 0.7 s), but chunks past `lodDistance` mesh on the main thread through `tick()`, 12 ms per frame, so they trickle in for another 0.5 s or so. Measured from the first build to ten smooth frames with everything meshed, one Valley Shrine takes 2.4 s on the main thread and 2.8–3.0 s with workers; four copies take 4.1–4.6 s either way. The gain is responsiveness: the longest main-thread stall drops from 1.7 s to 0.36–0.45 s with 4 workers, or 0.7–0.95 s with 23. Steady frames are also lower after a worker build (5.5 ms against 8.9 ms for one copy), for reasons not investigated. `flush()` is the only way to finish a build quickly, and it drops every worker result.
+- Workaround used: The demo keeps `flush()` for `?workers=0` and defaults to `min(4, cores - 1)` workers. It checks `crossOriginIsolated` itself to report the worker count, because the engine does not say whether workers are running or have fallen back.
+- Suggestion: Mesh half-resolution chunks in workers too, or let a build use workers without the per-tick budget (for example `await engine.flushAsync()`, or a settable `rebuildBudgetMs`). A read-only `meshWorkers` status (active count, fallen back, broken) would help hosts and benchmarks.
+
 ## Voxel-map editor interop
 
 The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the world for the editor's Map Config import: a version 2 map and the `.tileset.json` asset it links, which holds the atlas pixels, tile size, blocks and material groups. The seed-1337 Valley Shrine (565,254 voxels, 109 blocks) comes to a 2.5 MiB zip: a 21.5 MiB map and a 0.4 MiB tileset, decoded. `importAssetArchive` accepts the archive with the voxel-map editor's kind handlers (`tileset`, `voxelmap`, `texture`), and the block sets of all three worlds pass its `decodeTilesetDocument`. The version 2 export has not been opened in the editor UI yet.
@@ -69,5 +76,5 @@ The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the
 |---|---|---|
 | Post-processing | F-2 | perf |
 | Lighting | F-4, F-5 | perf, perf |
-| Meshing and scale | F-12 | friction |
+| Meshing and scale | F-12, F-13 | friction, perf |
 | Voxel-map editor interop | F-9, F-10, F-11 | friction, missing-feature, friction |

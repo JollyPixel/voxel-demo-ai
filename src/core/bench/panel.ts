@@ -32,6 +32,10 @@ export interface BuildReport {
   timings: ZoneTimings;
   meshMs: number;
   chunkCount: number;
+  /**
+   * Mesh workers in use; 0 when chunks mesh on the main thread.
+   */
+  workers: number;
 }
 
 export interface PanelContext {
@@ -87,6 +91,7 @@ export function createBenchmarkPanel(
     textures: 0,
     writeMs: Object.values(build.timings).reduce((sum, ms) => sum + ms, 0),
     meshMs: build.meshMs,
+    workers: build.workers,
     saved: "Run save/load to measure"
   };
   const benchmark = pane.addFolder({ title: `Benchmark · ${build.copies} scene(s)` });
@@ -104,13 +109,14 @@ export function createBenchmarkPanel(
     textures: { label: "textures", format: formatCount },
     writeMs: { label: "voxel write", format: formatMilliseconds },
     meshMs: { label: "mesh", format: formatMilliseconds },
+    workers: { label: "mesh workers", format: formatCount },
     saved: { label: "save/load" }
   });
   benchmark.addMonitors(build.timings, Object.fromEntries(
     Object.keys(build.timings).map((name) => [name, { label: name.toLowerCase(), format: formatMilliseconds }])
   ));
-  benchmark.addButton({ title: "Measure save/load" }).on("click", () => {
-    stats.saved = measureSaveLoad(engine);
+  benchmark.addButton({ title: "Measure save/load" }).on("click", async() => {
+    stats.saved = await measureSaveLoad(engine);
     benchmark.refresh();
   });
 
@@ -249,10 +255,12 @@ function addRenderToggles(
 
 /**
  * Round-trips the world through JSON; times save() and load(), not the JSON.
+ * The load time runs until the chunks are meshed: with mesh workers, load()
+ * only queues them.
  */
-function measureSaveLoad(
+async function measureSaveLoad(
   engine: VoxelEngine
-): string {
+): Promise<string> {
   const saveStart = performance.now();
   const saved = engine.save();
   const saveMs = performance.now() - saveStart;
@@ -260,6 +268,7 @@ function measureSaveLoad(
 
   const loadStart = performance.now();
   engine.load(JSON.parse(json));
+  await engine.whenIdle();
   const loadMs = performance.now() - loadStart;
 
   return `${saveMs.toFixed(0)} / ${loadMs.toFixed(0)} ms · ${(json.length / 1048576).toFixed(1)} MiB`;

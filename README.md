@@ -27,6 +27,8 @@ npm run setup
 npm run dev
 ```
 
+The dev and preview servers send `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers: mesh workers read chunk storage through `SharedArrayBuffer`, which needs a cross-origin isolated page. Without those headers the engine logs a warning and meshes on the main thread.
+
 `setup` links the editor packages, TypeScript, Oxlint, Vite, Three.js, and the shared `@openally` configs into this repo's ignored `node_modules`. It uses the installed editor workspace without downloading duplicate tooling. Open the local URL printed by Vite.
 
 The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performance tile. Press **F3** to toggle the pane. Hold the middle mouse button to look around, use **WASD** to fly, **Space/Shift** to rise or descend, and scroll while looking to change speed.
@@ -47,6 +49,7 @@ The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performan
 | `mips` | `?mips=0` | Sample tiles with nearest filtering only, without the engine's distant-tile averaging (distant blocks sparkle) |
 | `far` | `?far=0` | Chunks from the camera beyond which faces draw in their tile's flat average colour, 8 by default; `0` turns it off |
 | `lod` | `?lod=0` | Chunks from the camera beyond which chunks mesh at half resolution, 12 by default; `0` turns it off |
+| `workers` | `?workers=0` | Web Workers that mesh chunks, `min(4, cores - 1)` by default; `0` meshes on the main thread. Half-resolution chunks always mesh on the main thread |
 | `view` | `?view=pyramid` | Starting camera pose from the world's views. The Floating Tomb has `overview`, `platform`, `garden`, `tree`, `path`, `arch`, `rotunda`, `pyramid`, `interior` and `waterfall`. The Valley Shrine has `overview`, `valley`, `temple`, `hall`, `pagoda`, `garden`, `bridge`, `drygarden`, `shrine`, `cascade`, `overlook` and `peaks` |
 | `pad` | `?pad=1` | Alias for `?world=test-pad` |
 
