@@ -10,15 +10,20 @@ import { createBenchmarkPanel } from "../bench/panel.ts";
 import { DEFAULT_FINISH } from "../blocks/materials.ts";
 import { Brush, WORLD_LAYER } from "../builder/Brush.ts";
 import { createEffects } from "../scene/effects.ts";
-import { gtao as gtaoPipeline, gtaoToggle } from "../scene/gtao.ts";
 import { configureRendering, createLighting } from "../scene/lighting.ts";
+import { createScenePipeline } from "../scene/pipeline.ts";
 import {
   buildZones,
   sceneBounds,
   type WorldDefinition,
   type ZoneTimings
 } from "../world.ts";
-import { AO_STRENGTH, type DemoConfig } from "./config.ts";
+import {
+  AO_STRENGTH,
+  CHUNK_SIZE,
+  detailDistance,
+  type DemoConfig
+} from "./config.ts";
 
 // CONSTANTS
 const kStatsInterval = 30;
@@ -48,13 +53,16 @@ export async function runWorld(
     pitch: pose.pitch,
     moveSpeed: 28,
     maxMoveSpeed: 210,
-    focusMode: "none",
-    postProcessing: config.gtao ? gtaoPipeline : null
+    focusMode: "none"
   });
+  const pipeline = createScenePipeline(camera, { gtao: config.gtao, oit: config.oit });
   const voxel = runtime.world.createActor("terrain").addComponentAndGet(VoxelRenderer, {
     focus: camera.actor.object3D,
     greedy: config.greedy,
-    chunkSize: 32,
+    vertexPulling: config.pulling,
+    chunkSize: CHUNK_SIZE,
+    farDistance: detailDistance(config.far),
+    lodDistance: detailDistance(config.lod),
     layers: [WORLD_LAYER],
     blocks: tileset.blocks,
     tilesets: await loadTilesets([tileset.definition]),
@@ -92,6 +100,8 @@ export async function runWorld(
   });
 
   const chunkCount = [...engine.world.getAllChunks()].length;
+  // The first build runs before VoxelRenderer samples its focus (FEEDBACK F-12).
+  engine.focus = camera.actor.object3D.getWorldPosition(new THREE.Vector3());
   const meshMs = await measureAsync(async() => {
     engine.flush();
     await engine.whenIdle();
@@ -102,7 +112,7 @@ export async function runWorld(
     world,
     engine,
     lighting,
-    gtao: gtaoToggle(camera),
+    pipeline,
     effects,
     tileset,
     build: { seed: config.seed, copies: config.copies, timings, meshMs, chunkCount }

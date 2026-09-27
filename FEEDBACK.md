@@ -1,29 +1,15 @@
 # Voxel renderer feedback
 
-Open issues found while building the Floating Tomb and the Valley Shrine, grouped by subject. The demo works around engine limitations locally; the editor packages remain unchanged.
+Issues found while building the Floating Tomb and the Valley Shrine, grouped by subject. The demo works around engine limitations locally; the editor packages remain unchanged. Entries fixed upstream move to [Resolved](#resolved) and keep their number.
 
-## Post-processing and render strategies
-
-### [F-1] Order-independent transparency and post-processing cannot be combined
-- Area: rendering · Severity: missing-feature
-- Context: The demo's water is transparent and relies on three.js sorting. The voxel-map editor composites transparency with `VoxelTransparencyRenderer`, installed as a whole `RenderStrategy`.
-- What happened: A `RenderStrategy` owns the frame, and `camera.postProcessing` only works under the default strategy. `VoxelTransparencyRenderer` is not a node: it swaps `setRenderObjectFunction` and composites through its own targets. A camera therefore gets either weighted blended transparency or a post-processing pipeline, not both.
-- Workaround used: None needed. The demo does not use the transparency renderer.
-- Suggestion: Split "how the scene is drawn" from "what happens after". The strategy renders into a target, and a camera's pipeline reads that target instead of calling `pass()` itself, for example by passing a scene texture node through `PostProcessingContext`.
+## Post-processing
 
 ### [F-2] Post-processing passes render at canvas size in a viewport
 - Area: rendering · Severity: perf
 - Context: Reviewing `camera.postProcessing` for split-screen cameras.
-- What happened: `pass()` sizes its targets from the drawing buffer, not the camera's viewport. A half-screen camera renders a full-canvas pass, then the pipeline squeezes it into its viewport. The result is correct but costs about twice the fill rate per camera. Drawing inside a viewport has not been checked on a GPU yet; the demo only uses a full-canvas camera.
+- What happened: `pass()` sizes its targets from the drawing buffer, not the camera's viewport. A half-screen camera renders a full-canvas pass, then the pipeline squeezes it into its viewport. The result is correct but costs about twice the fill rate per camera. Still the case after #791: the renderer docs say "Pass targets follow the canvas size, not the viewport size", `OffscreenCameraPipeline` sizes its new target from `getDrawingBufferSize()`, and `VoxelTransparencyPassNode` follows the drawing buffer too. Drawing inside a viewport has not been checked on a GPU yet; the demo only uses a full-canvas camera.
 - Workaround used: None needed.
-- Suggestion: Size the pass through `PassNode.setViewport` or `resolutionScale` from the camera's viewport, which requires the engine to build the scene pass itself (see F-1).
-
-### [F-3] Scenes see the renderer only as an interface
-- Area: rendering · Severity: friction
-- Context: Installing a custom `RenderStrategy` from a scene's `awake()`.
-- What happened: `runtime.renderer` is a `ThreeRenderer`, but a scene only has `this.world.renderer`, typed as the `Renderer` interface. The voxel-map editor's `installTransparency` still checks `instanceof Systems.ThreeRenderer` to reach `renderStrategy`.
-- Workaround used: None in the demo. Post-processing lives on the camera, and `main.ts` uses `runtime.renderer`.
-- Suggestion: Only worth doing if strategies installed from scenes become common. Type `World` by its renderer, or expose the strategy on the `Renderer` interface.
+- Suggestion: Pass the camera's viewport in `PostProcessingContext`, so a pipeline can size its passes with `PassNode.setViewport` or `setResolutionScale`, and size the offscreen target from the viewport. Since F-1 the caller builds the scene pass, so the engine no longer has to.
 
 ## Lighting
 
@@ -40,31 +26,17 @@ Measured in headless Chrome on the test machine, on the Valley Shrine (565k voxe
 - Area: rendering · Severity: perf
 - Context: A voxel world whose chunks and sun never move.
 - What happened: The shadow pass drew every chunk into the 4096² map each frame. In the valley view it took the frame from 3 ms to 15.6 ms (19 fps). It also doubled the draw calls: 1,278 against 449.
-- Workaround used: `runWorld` sets `shadow.autoUpdate = false` and asks for one redraw once `engine.whenIdle()` resolves, after the build and after each pane toggle that rebuilds chunks. The valley view now runs at 60 fps with 3.6 ms frames and shadows on. A rebuild the demo does not trigger itself (for example chunks that `ViewDistance` shows or hides as the camera moves) leaves the map stale.
+- Workaround used: `runWorld` sets `shadow.autoUpdate = false` and asks for one redraw once `engine.whenIdle()` resolves, after the build and after each pane toggle that rebuilds chunks. The valley view now runs at 60 fps with 3.6 ms frames and shadows on. A rebuild the demo does not trigger itself leaves the map stale: chunks that `ViewDistance` shows or hides as the camera moves, and chunks that cross `lodDistance` and are remeshed at the other resolution.
 - Suggestion: An engine event when chunk meshes change (built, rebuilt, shown or hidden), so a host can keep a static shadow map current without guessing. Optionally a `staticShadows` option on `VoxelRenderer` that does this itself.
 
 ## Meshing and scale
 
-### [F-6] Baked ambient occlusion cuts greedy merging by two thirds
-- Area: rendering · Severity: perf
-- Context: Turning on `ambientOcclusion` for the whole scene.
-- What happened: Greedy faces only merge when their corner shading matches, so every crease splits the quads around it. On this scene greedy meshing now saves 22% of triangles (332k against 424k) where it saved 63% before AO. Mesh time also includes the bake. The engine docs report the same effect.
-- Workaround used: None needed; the enlarged scene still runs at 60 fps.
-- Suggestion: Keep geometry mergeable by sampling occlusion in the shader, for example from a per-chunk occupancy texture, or offer AO only on non-greedy chunks near the camera.
-
-### [F-7] No per-voxel tile variation
-- Area: blocks · Severity: missing-feature
-- Context: Breaking up large walls, rock and lawns.
-- What happened: A block has one tile per slot, so big surfaces repeat visibly.
-- Workaround used: Materials declare `alternates`: extra tiles painted from new seeds, registered as separate blocks, and the demo's `Brush` picks one from a position hash. Greedy meshing cannot merge faces across different ids, so the triangle count rises.
-- Suggestion: Tile variants on the block definition, picked by the mesher from a position hash and kept mergeable when the variant is equal.
-
-### [F-8] No level of detail for distant chunks
-- Area: view · Severity: missing-feature
-- Context: Keeping distant islands legible and cheap.
-- What happened: `ViewDistance` can only hide chunks beyond a radius. There is no coarser mesh for far chunks, so the choice is full detail or nothing.
-- Workaround used: None needed at this scale: one copy of the Floating Tomb is 343k triangles and four copies are 1.34M, both at 60 fps on the test machine. The Valley Shrine is 1.19M triangles and runs at 60 fps once F-4 and F-5 are worked around. Distant-tile averaging handles the visual side of distance.
-- Suggestion: Downsampled chunk meshes (2×/4× voxels, majority material) past configurable distances, with a short cross-fade.
+### [F-12] The first build ignores view and detail distances
+- Area: view · Severity: friction
+- Context: Building the world, then calling `engine.flush()` before the first frame, with `lodDistance` set.
+- What happened: `VoxelRenderer` copies its `focus` object's position into `engine.focus` only in `update()`. Until the first update `engine.focus` is `null`, and a null focus means unbounded, full-detail chunks. The demo's `flush()` therefore meshed all four Valley Shrine copies at full resolution (4.28M triangles), and the first frames then remeshed the distant chunks at half resolution: about three seconds of 15–33 ms frames before settling at 9 ms. `ViewDistance` has the same gap: hidden chunks get meshed.
+- Workaround used: `runWorld` sets `engine.focus` from the camera's world position before `flush()`. The build now meshes at 2.89M triangles directly, with no burst after load.
+- Suggestion: Sample the focus in `VoxelRenderer.awake()` or at the start of `engine.flush()`, or document that a pre-loop flush needs `engine.focus`.
 
 ## Voxel-map editor interop
 
@@ -95,7 +67,7 @@ The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the
 
 | Subject | Entries | Severity |
 |---|---|---|
-| Post-processing and render strategies | F-1, F-2, F-3 | missing-feature, perf, friction |
+| Post-processing | F-2 | perf |
 | Lighting | F-4, F-5 | perf, perf |
-| Meshing and scale | F-6, F-7, F-8 | perf, missing-feature, missing-feature |
+| Meshing and scale | F-12 | friction |
 | Voxel-map editor interop | F-9, F-10, F-11 | friction, missing-feature, friction |

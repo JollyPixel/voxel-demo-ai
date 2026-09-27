@@ -2,6 +2,7 @@
 import {
   DockFacade,
   Pane,
+  formatBytes,
   formatCount,
   formatMilliseconds
 } from "@jolly-pixel/ui";
@@ -9,10 +10,15 @@ import type { RendererFrameStats } from "@jolly-pixel/runtime";
 import { ViewDistance, type VoxelEngine } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
-import { AO_STRENGTH } from "../app/config.ts";
+import {
+  AO_STRENGTH,
+  MAX_DETAIL_CHUNKS,
+  detailChunks,
+  detailDistance
+} from "../app/config.ts";
 import type { Tileset } from "../blocks/registry.ts";
 import { createEditorArchive } from "../export/editorArchive.ts";
-import type { Gtao } from "../scene/gtao.ts";
+import type { ScenePipeline } from "../scene/pipeline.ts";
 import type { Effects } from "../scene/effects.ts";
 import type { Lighting } from "../scene/lighting.ts";
 import type { WorldDefinition, ZoneTimings } from "../world.ts";
@@ -32,7 +38,7 @@ export interface PanelContext {
   world: WorldDefinition;
   engine: VoxelEngine;
   lighting: Lighting;
-  gtao: Gtao;
+  pipeline: ScenePipeline;
   effects: Effects;
   tileset: Tileset;
   build: BuildReport;
@@ -41,7 +47,7 @@ export interface PanelContext {
 export interface FrameSample {
   fps: number;
   frameMs: number;
-  mesh: { chunks: number; vertices: number; };
+  mesh: { chunks: number; triangles: number; bytes: number; };
   renderer: RendererFrameStats;
 }
 
@@ -75,6 +81,7 @@ export function createBenchmarkPanel(
     chunks: build.chunkCount,
     meshed: 0,
     triangles: 0,
+    meshMemory: 0,
     drawCalls: 0,
     geometries: 0,
     textures: 0,
@@ -90,6 +97,8 @@ export function createBenchmarkPanel(
     chunks: { label: "chunks", format: formatCount },
     meshed: { label: "meshed", format: formatCount },
     triangles: { label: "triangles", format: formatCount },
+    // Pulled faces live in data textures, outside the renderer's geometry memory.
+    meshMemory: { label: "mesh memory", format: formatBytes },
     drawCalls: { label: "draw calls", format: formatCount },
     geometries: { label: "geometries", format: formatCount },
     textures: { label: "textures", format: formatCount },
@@ -114,7 +123,8 @@ export function createBenchmarkPanel(
       stats.fps = Math.round(fps);
       stats.frameMs = Math.round(frameMs * 10) / 10;
       stats.meshed = mesh.chunks;
-      stats.triangles = Math.round(mesh.vertices / 3);
+      stats.triangles = mesh.triangles;
+      stats.meshMemory = mesh.bytes;
       stats.drawCalls = renderer.drawCalls;
       stats.geometries = renderer.geometries;
       stats.textures = renderer.textures;
@@ -175,19 +185,24 @@ function download(
 
 function addRenderToggles(
   pane: Pane,
-  { engine, lighting, gtao, effects }: PanelContext
+  { engine, lighting, pipeline, effects }: PanelContext
 ): void {
   const options = {
     shadows: lighting.shadows,
     occlusion: engine.ambientOcclusion > 0,
-    gtao: gtao.enabled,
+    gtao: pipeline.gtao,
+    oit: pipeline.oit,
     greedy: engine.greedy,
+    pulling: engine.vertexPulling,
     water: true,
     clouds: true,
     wireframe: false,
     chunkBounds: false,
-    distance: 0
+    distance: 0,
+    far: detailChunks(engine.farDistance),
+    lod: detailChunks(engine.lodDistance)
   };
+  const detail = { min: 0, max: MAX_DETAIL_CHUNKS, step: 1 };
 
   const render = pane.addFolder({ title: "Render" });
   render.addBinding(options, "shadows").on("change", ({ value }) => lighting.setShadows(value));
@@ -195,10 +210,15 @@ function addRenderToggles(
     engine.ambientOcclusion = value ? AO_STRENGTH : 0;
     lighting.refreshShadows();
   });
-  render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => gtao.setEnabled(value));
+  render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => pipeline.set({ gtao: value }));
+  render.addBinding(options, "oit", { label: "OIT water" }).on("change", ({ value }) => pipeline.set({ oit: value }));
+  // Both setters rebuild every chunk; greedy takes precedence over pulling.
   render.addBinding(options, "greedy").on("change", ({ value }) => {
     engine.greedy = value;
-    engine.markAllChunksDirty("toggle");
+    lighting.refreshShadows();
+  });
+  render.addBinding(options, "pulling", { label: "vertex pulling" }).on("change", ({ value }) => {
+    engine.vertexPulling = value;
     lighting.refreshShadows();
   });
   render.addBinding(options, "water").on("change", ({ value }) => {
@@ -210,6 +230,14 @@ function addRenderToggles(
   render.addBinding(options, "distance", { min: 0, max: 12, step: 1 }).on("change", ({ value }) => {
     engine.viewDistance = value ? new ViewDistance({ chunks: value }) : ViewDistance.Unlimited;
     lighting.refreshShadows();
+  });
+  render.addBinding(options, "far", { label: "flat tiles", ...detail }).on("change", ({ value }) => {
+    engine.farDistance = detailDistance(value);
+  });
+  render.addBinding(options, "lod", { label: "half resolution", ...detail }).on("change", ({ value }) => {
+    engine.lodDistance = detailDistance(value);
+    // The engine applies the distance on its next tick, then remeshes.
+    requestAnimationFrame(() => lighting.refreshShadows());
   });
   render.addBinding(options, "wireframe").on("change", ({ value }) => {
     engine.inspector.mode = value ? "wireframe" : "off";
