@@ -21,7 +21,7 @@ import {
 import {
   AO_STRENGTH,
   CHUNK_SIZE,
-  detailDistance,
+  farDistance,
   type DemoConfig
 } from "./config.ts";
 
@@ -56,42 +56,49 @@ export async function runWorld(
     focusMode: "none"
   });
   const pipeline = createScenePipeline(camera, { gtao: config.gtao, oit: config.oit });
-  const voxel = runtime.world.createActor("terrain").addComponentAndGet(VoxelRenderer, {
+  const { view: voxels } = runtime.world.createActor("terrain").addComponentAndGet(VoxelRenderer, {
     focus: camera.actor.object3D,
-    greedy: config.greedy,
-    vertexPulling: config.pulling,
-    chunkSize: CHUNK_SIZE,
-    farDistance: detailDistance(config.far),
-    lodDistance: detailDistance(config.lod),
-    layers: [WORLD_LAYER],
-    blocks: tileset.blocks,
+    document: {
+      chunkSize: CHUNK_SIZE,
+      layers: [WORLD_LAYER],
+      blocks: tileset.blocks,
+      materialGroups: blocks.materialGroups
+    },
     tilesets: await loadTilesets([tileset.definition]),
-    material: "standard",
-    alphaTest: 0.35,
-    rebuildBudgetMs: 12,
-    castShadow: config.shadows,
-    receiveShadow: config.shadows,
-    ambientOcclusion: config.ao ? AO_STRENGTH : 0,
-    tileMinification: config.mips ? "average" : "nearest",
-    materialGroups: blocks.materialGroups,
-    meshWorkers: config.workers > 0 ?
-      {
-        count: config.workers,
-        createWorker: () => new Worker(new URL("./meshWorker.ts", import.meta.url), { type: "module" })
-      } :
-      undefined,
-    // Grouped blocks already carry their group's finish; this runs after it.
-    materialCustomizer: (material, _tilesetId, surface) => {
-      if (surface.materialGroup === undefined && material instanceof THREE.MeshStandardMaterial) {
-        Object.assign(material, DEFAULT_FINISH);
+    rendering: {
+      material: "standard",
+      alphaTest: 0.35,
+      tileMinification: config.mips ? "average" : "nearest",
+      // Grouped blocks already carry their group's finish; this runs after it.
+      customizer: (material, _tilesetId, surface) => {
+        if (surface.materialGroup === undefined && material instanceof THREE.MeshStandardMaterial) {
+          Object.assign(material, DEFAULT_FINISH);
+        }
       }
+    },
+    lighting: {
+      ambientOcclusion: config.ao ? AO_STRENGTH : 0,
+      castShadow: config.shadows,
+      receiveShadow: config.shadows
+    },
+    range: {
+      farDistance: farDistance(config.far)
+    },
+    meshing: {
+      budgetMs: 12,
+      workers: config.workers > 0 ?
+        {
+          count: config.workers,
+          createWorker: () => new Worker(new URL("./meshWorker.ts", import.meta.url), { type: "module" })
+        } :
+        undefined
     }
   });
-  const { engine } = voxel;
-  runtime.metrics.addSource(engine.inspector);
+  const { world: voxelWorld } = voxels.document;
+  runtime.metrics.addSource(voxels.inspector);
   await runtime.load({ skipLoadingScreen: true });
 
-  const brush = Brush.forWorld(engine.world);
+  const brush = Brush.forWorld(voxelWorld);
   const timings = buildZones(world, brush, config);
 
   const effects = createEffects(brush.fixtures, atmosphere);
@@ -102,27 +109,27 @@ export async function runWorld(
     atmosphere,
     lights: brush.fixtures.lights,
     bounds: sceneBounds(world, config.copies),
-    chunks: engine
+    voxels
   });
 
-  const chunkCount = [...engine.world.getAllChunks()].length;
+  const chunkCount = [...voxelWorld.getAllChunks()].length;
   // The first build runs before VoxelRenderer samples its focus (FEEDBACK F-12).
-  engine.focus = camera.actor.object3D.getWorldPosition(new THREE.Vector3());
+  voxels.focus = camera.actor.object3D.getWorldPosition(new THREE.Vector3());
   /*
    * flush() meshes on the main thread even with workers; the frame loop
-   * started by runtime.load() ticks the engine, which feeds the workers.
+   * started by runtime.load() ticks the view, which feeds the workers.
    */
   const meshMs = await measureAsync(async() => {
     if (!meshesInWorkers(config)) {
-      engine.flush();
+      voxels.flush();
     }
-    await engine.whenIdle();
+    await voxels.whenIdle();
   });
   loading.remove();
 
   const panel = createBenchmarkPanel({
     world,
-    engine,
+    voxels,
     lighting,
     pipeline,
     effects,
@@ -149,7 +156,7 @@ export async function runWorld(
 
       if (++frames % kStatsInterval === 0) {
         const { fps = 0, ms = 0 } = runtime.stats.snapshot();
-        panel.update({ fps, frameMs: ms, mesh: engine.inspector.mesh.stats, renderer: runtime.metrics.renderer.frame });
+        panel.update({ fps, frameMs: ms, mesh: voxels.inspector.mesh.stats, renderer: runtime.metrics.renderer.frame });
       }
       requestAnimationFrame(frame);
     }
@@ -162,7 +169,7 @@ export async function runWorld(
     console.table({
       ...config,
       view,
-      voxels: engine.world.voxelCount,
+      voxels: voxelWorld.voxelCount,
       chunks: chunkCount,
       writeMs,
       meshMs,
@@ -172,7 +179,7 @@ export async function runWorld(
 }
 
 /**
- * The engine ignores `meshWorkers` without SharedArrayBuffer.
+ * The view ignores `meshing.workers` without SharedArrayBuffer.
  */
 function meshesInWorkers(
   config: DemoConfig

@@ -26,35 +26,28 @@ Measured in headless Chrome on the test machine, on the Valley Shrine (565k voxe
 - Area: rendering · Severity: perf
 - Context: A voxel world whose chunks and sun never move.
 - What happened: The shadow pass drew every chunk into the 4096² map each frame. In the valley view it took the frame from 3 ms to 15.6 ms (19 fps). It also doubled the draw calls: 1,278 against 449.
-- Workaround used: `runWorld` sets `shadow.autoUpdate = false` and asks for one redraw once `engine.whenIdle()` resolves, after the build and after each pane toggle that rebuilds chunks. The valley view now runs at 60 fps with 3.6 ms frames and shadows on. A rebuild the demo does not trigger itself leaves the map stale: chunks that `ViewDistance` shows or hides as the camera moves, and chunks that cross `lodDistance` and are remeshed at the other resolution.
-- Suggestion: An engine event when chunk meshes change (built, rebuilt, shown or hidden), so a host can keep a static shadow map current without guessing. Optionally a `staticShadows` option on `VoxelRenderer` that does this itself.
+- Workaround used: `runWorld` sets `shadow.autoUpdate = false` and asks for one redraw once `view.whenIdle()` resolves, after the build and after each pane toggle that rebuilds chunks. The valley view now runs at 60 fps with 3.6 ms frames and shadows on. A rebuild the demo does not trigger itself leaves the map stale, such as chunks that `ViewDistance` shows or hides as the camera moves. The noise-world example listens for `childadded`/`childremoved` on the view's internal `VoxelView:chunks` group instead, but that relies on an internal name and misses hidden chunks, which only flip `mesh.visible`.
+- Suggestion: An engine event when chunk meshes change (built, rebuilt, shown or hidden), so a host can keep a static shadow map current without guessing. Optionally a `staticShadows` lighting option that does this itself.
 
 ## Meshing and scale
 
-### [F-12] The first build ignores view and detail distances
+### [F-12] The first build ignores the view distance
 - Area: view · Severity: friction
-- Context: Building the world, then calling `engine.flush()` before the first frame, with `lodDistance` set.
-- What happened: `VoxelRenderer` copies its `focus` object's position into `engine.focus` only in `update()`. Until the first update `engine.focus` is `null`, and a null focus means unbounded, full-detail chunks. The demo's `flush()` therefore meshed all four Valley Shrine copies at full resolution (4.28M triangles), and the first frames then remeshed the distant chunks at half resolution: about three seconds of 15–33 ms frames before settling at 9 ms. `ViewDistance` has the same gap: hidden chunks get meshed.
-- Workaround used: `runWorld` sets `engine.focus` from the camera's world position before `flush()`. The build now meshes at 2.89M triangles directly, with no burst after load.
-- Suggestion: Sample the focus in `VoxelRenderer.awake()` or at the start of `engine.flush()`, or document that a pre-loop flush needs `engine.focus`.
+- Context: Building the world, then calling `view.flush()` before the first frame.
+- What happened: `VoxelRenderer` copies its `focus` object's position into `view.focus` only in `update()`, and `awake()` has already queued every chunk with a `null` focus. A null focus means an unbounded view, so a pre-loop `flush()` meshes chunks that `range.viewDistance` would hide, and workers get chunks in no particular order instead of nearest first. Since greedy meshing and LOD were removed (#803) nothing is remeshed afterwards, so the cost is wasted work, not the burst of half-resolution rebuilds measured before.
+- Workaround used: `runWorld` sets `view.focus` from the camera's world position before `flush()`.
+- Suggestion: Sample the focus in `VoxelRenderer.awake()` or at the start of `view.flush()`, or document that a pre-loop flush needs `view.focus`.
 
-### [F-13] Mesh workers leave half-resolution chunks to the tick budget
+### [F-13] A worker build cannot finish as fast as a flush
 - Area: view · Severity: perf
-- Context: Switching the first build from `flush()` to mesh workers (`?workers=`), then waiting for `whenIdle()` while the frame loop ticks. Production build, headless Chrome, 24 cores, best of 3–4 runs.
-- What happened: Workers finish their chunks quickly (213 of the Valley Shrine's 476 in about 0.7 s), but chunks past `lodDistance` mesh on the main thread through `tick()`, 12 ms per frame, so they trickle in for another 0.5 s or so. Measured from the first build to ten smooth frames with everything meshed, one Valley Shrine takes 2.4 s on the main thread and 2.8–3.0 s with workers; four copies take 4.1–4.6 s either way. The gain is responsiveness: the longest main-thread stall drops from 1.7 s to 0.36–0.45 s with 4 workers, or 0.7–0.95 s with 23. Steady frames are also lower after a worker build (5.5 ms against 8.9 ms for one copy), for reasons not investigated. `flush()` is the only way to finish a build quickly, and it drops every worker result.
-- Workaround used: The demo keeps `flush()` for `?workers=0` and defaults to `min(4, cores - 1)` workers. It checks `crossOriginIsolated` itself to report the worker count, because the engine does not say whether workers are running or have fallen back.
-- Suggestion: Mesh half-resolution chunks in workers too, or let a build use workers without the per-tick budget (for example `await engine.flushAsync()`, or a settable `rebuildBudgetMs`). A read-only `meshWorkers` status (active count, fallen back, broken) would help hosts and benchmarks.
+- Context: Building with mesh workers (`?workers=`, 4 by default here) and waiting for `whenIdle()` while the frame loop ticks, against `?workers=0`, which calls `flush()`. Production build, headless Chrome, 24 cores, 3 runs each. "Mesh" is the time to `whenIdle()`; the longest task also covers the voxel writes (about 0.26 s per Valley Shrine copy).
+- What happened: Since LOD was removed, workers mesh every chunk, so the half-resolution tail measured before is gone. One Valley Shrine meshes in 0.44–0.50 s with `flush()` (longest task 0.79–0.89 s) and in 1.1–1.9 s with workers (longest task 0.37–0.49 s). Four copies mesh in 1.8–2.3 s with `flush()` (longest task 3.1–3.6 s) and in 1.0–1.7 s with workers (longest task 1.1–1.9 s). Workers therefore win outright on big builds, but on one copy they take two to four times longer than a flush to finish. `flush()` still reclaims every in-flight worker job and meshes on the main thread.
+- Workaround used: The demo keeps `flush()` for `?workers=0` and defaults to `min(4, cores - 1)` workers. It checks `crossOriginIsolated` itself to report the worker count, because the view does not say whether workers are running or have fallen back.
+- Suggestion: Let a build use workers without the per-tick budget, for example `await view.flushAsync()`. A read-only worker status (active count, fallen back, broken) would help hosts and benchmarks.
 
 ## Voxel-map editor interop
 
-The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the world for the editor's Map Config import: a version 2 map and the `.tileset.json` asset it links, which holds the atlas pixels, tile size, blocks and material groups. The seed-1337 Valley Shrine (565,254 voxels, 109 blocks) comes to a 2.5 MiB zip: a 21.5 MiB map and a 0.4 MiB tileset, decoded. `importAssetArchive` accepts the archive with the voxel-map editor's kind handlers (`tileset`, `voxelmap`, `texture`), and the block sets of all three worlds pass its `decodeTilesetDocument`. The version 2 export has not been opened in the editor UI yet.
-
-### [F-9] Voxel JSON uses about 40 bytes per voxel
-- Area: asset-server · Severity: friction
-- Context: Checking that the export fits before downloading.
-- What happened: The map entry stores each voxel as `"x,y,z":{"block":n,"transform":n}`, about 40 bytes. One copy of the Valley Shrine (565,254 voxels) makes a 21.5 MiB map entry that zips to 2.5 MiB. It now fits under the voxel-map editor's 64 MiB entry limit, but three copies would not, and the whole entry is decoded and parsed on import.
-- Workaround used: The exporter mirrors the voxel-map editor's `WORLD_BACKEND_TUNING` limits, which the editor package does not export, and refuses early with a message naming the entry and its size.
-- Suggestion: A compact voxel encoding (per-layer packed position and voxel arrays, base64 like `.pixelart`) would shrink maps several times, whatever the limit.
+The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the world for the editor's Map Config import: a version 3 map and the `.tileset.json` asset it links, which holds the atlas pixels, tile size, blocks and material groups. The seed-1337 Valley Shrine (565,254 voxels, 109 blocks) comes to a 0.44 MiB zip: a 1.9 MiB map and a 0.4 MiB tileset, decoded. With the run-length encoded chunks of format version 3 (#805) the map entry is about 11 times smaller than the 21.5 MiB version 2 entry, which settles the old F-9. The exporter still mirrors the voxel-map editor's `WORLD_BACKEND_TUNING` limits (64 MiB per entry, 128 MiB in total), which the editor package does not export. The map decodes with `decodeVoxelWorld`, the decoder of the editor's `voxelmap` kind. `importAssetArchive` accepted the version 2 archive with the voxel-map editor's kind handlers (`tileset`, `voxelmap`, `texture`), and the block sets of all three worlds passed its `decodeTilesetDocument`; that check has not been re-run on version 3, and the export has not been opened in the editor UI yet.
 
 ### [F-10] No browser-safe way to write an archive or name the asset kinds
 - Area: asset-server · Severity: missing-feature
@@ -77,4 +70,4 @@ The pane's **Export .zip** button (`src/core/export/editorArchive.ts`) packs the
 | Post-processing | F-2 | perf |
 | Lighting | F-4, F-5 | perf, perf |
 | Meshing and scale | F-12, F-13 | friction, perf |
-| Voxel-map editor interop | F-9, F-10, F-11 | friction, missing-feature, friction |
+| Voxel-map editor interop | F-10, F-11 | missing-feature, friction |

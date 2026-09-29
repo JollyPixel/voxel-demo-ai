@@ -5,7 +5,7 @@ import {
   type PixelArtDocumentData
 } from "@jolly-pixel/pixel-draw.renderer";
 import {
-  encodeVoxelDocument,
+  encodeVoxelWorld,
   TilesetDocument,
   type BlockDefinition,
   type MaterialGroupJSON,
@@ -65,7 +65,7 @@ export interface EditorArchiveTileset {
 
 export interface EditorArchiveOptions {
   /**
-   * Output of `VoxelEngine.save()`.
+   * Output of `VoxelDocument.save()`.
    */
   world: VoxelWorldJSON;
   tileset: EditorArchiveTileset;
@@ -121,7 +121,7 @@ export function createEditorArchive(
   const files: Record<string, Uint8Array> = {
     [tilesetPath]: encodeJSON(tilesetAssetDocument(tileset)),
     // The editor re-partitions a document of another chunk size on load.
-    [mapPath]: encodeVoxelDocument({
+    [mapPath]: encodeVoxelWorld({
       ...world,
       tilesets: world.tilesets.map((definition) => (definition.id === tileset.id ?
         linkedTileset(definition, tilesetId) :

@@ -4,11 +4,12 @@ import { strFromU8, unzipSync } from 'fflate';
 import { parsePixelArtDocument } from '@jolly-pixel/pixel-draw.renderer';
 import {
   DEFAULT_CHUNK_SIZE,
-  decodeVoxelDocument,
+  decodeVoxelWorld,
   deserializeVoxelWorld,
   projectTilesetBlock,
   TilesetDocument,
   TilesetList,
+  VoxelDocument,
   VoxelWorld
 } from '@jolly-pixel/voxel.renderer';
 import { createEditorArchive, EditorArchiveError } from '../src/core/export/editorArchive.ts';
@@ -31,14 +32,18 @@ const kTileset = {
   materialGroups: [{ id: 'gold', roughness: 0.38, metalness: 0.75, emissive: '#000000', emissiveIntensity: 1 }]
 };
 
-function savedWorld(voxels = { '-3,4,70': { block: 1, transform: 0 } }) {
-  return {
-    version: 2,
+/**
+ * A saved one-layer world holding `cells`, a voxel patch.
+ */
+function savedWorld(cells = [-3, 4, 70, 1, 0]) {
+  const document = new VoxelDocument({
     chunkSize: 32,
-    tilesets: [{ id: 'tomb', slot: 0, src: 'data:image/png;base64,AAAA', tileSize: 32, cols: 2, rows: 1 }],
-    layers: [{ id: 'layer_0', name: 'Terrain', visible: true, order: 0, voxels }],
-    objectLayers: []
-  };
+    layers: ['Terrain'],
+    tilesets: [{ id: 'tomb', slot: 0, src: 'data:image/png;base64,AAAA', tileSize: 32, cols: 2, rows: 1 }]
+  });
+  document.world.patchVoxels('Terrain', cells);
+
+  return document.save();
 }
 
 function unzip(bytes) {
@@ -66,14 +71,14 @@ test('lists the tileset before the map root in the manifest', () => {
   assert.deepEqual(manifest.assets.map(({ kind }) => kind), ['tileset', 'voxelmap']);
 });
 
-test('writes a version 2 map an editor world of the default chunk size loads', () => {
+test('writes a version 3 map an editor world of the default chunk size loads', () => {
   const files = unzip(archive().bytes);
-  const document = decodeVoxelDocument(files['maps/floating-tomb.voxelmap.json']);
+  const document = decodeVoxelWorld(files['maps/floating-tomb.voxelmap.json']);
   const world = new VoxelWorld(DEFAULT_CHUNK_SIZE);
   const tilesets = new TilesetList();
   deserializeVoxelWorld(document, world, { tilesets });
 
-  assert.equal(document.version, 2);
+  assert.equal(document.version, 3);
   assert.equal(document.chunkSize, 32);
   assert.deepEqual(document.tilesets, [
     { id: 'tomb', slot: 0, asset: { id: 'floating-tomb-tileset', kind: 'tileset' } }
@@ -109,11 +114,16 @@ test('tileset blocks project onto the ids the map stores', () => {
 });
 
 test('refuses an archive over the editor limits', () => {
-  const voxels = {};
-  for (let i = 0; i < 1000; i++) {
-    voxels[`${i},0,0`] = { block: 1, transform: 0 };
+  // A 3D checkerboard: every run holds one voxel, the worst case of the format.
+  const cells = [];
+  for (let y = 0; y < 32; y++) {
+    for (let z = 0; z < 32; z++) {
+      for (let x = (y + z) % 2; x < 32; x += 2) {
+        cells.push(x, y, z, 1, 0);
+      }
+    }
   }
-  const options = { world: savedWorld(voxels) };
+  const options = { world: savedWorld(cells) };
 
   assert.throws(
     () => archive({ ...options, limits: { maxEntryBytes: 16 * 1024, maxBytes: 1024 * 1024 } }),

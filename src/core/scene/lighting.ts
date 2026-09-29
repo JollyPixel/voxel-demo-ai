@@ -1,5 +1,6 @@
 // Import Third-party Dependencies
 import * as THREE from "three/webgpu";
+import type { VoxelView } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import type { PointLightFixture } from "../builder/fixtures.ts";
@@ -17,7 +18,7 @@ export interface LightingOptions {
   /**
    * The voxel view, whose chunk meshes carry shadow flags of their own.
    */
-  chunks: { castShadow: boolean; receiveShadow: boolean; whenIdle: () => Promise<void>; };
+  voxels: Pick<VoxelView, "lighting" | "whenIdle">;
 }
 
 export interface Lighting {
@@ -65,15 +66,16 @@ export function createLighting(
   }
 
   function refreshShadows(): void {
-    void options.chunks.whenIdle().then(() => {
+    void options.voxels.whenIdle().then(() => {
       sun.shadow.needsUpdate = true;
     });
   }
   function setShadows(enabled: boolean): void {
+    const { lighting } = options.voxels;
     sun.castShadow = enabled;
     renderer.shadowMap.enabled = enabled;
-    options.chunks.castShadow = enabled;
-    options.chunks.receiveShadow = enabled;
+    lighting.castShadow = enabled;
+    lighting.receiveShadow = enabled;
     refreshShadows();
   }
   setShadows(options.shadows);

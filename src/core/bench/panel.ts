@@ -7,14 +7,14 @@ import {
   formatMilliseconds
 } from "@jolly-pixel/ui";
 import type { RendererFrameStats } from "@jolly-pixel/runtime";
-import { ViewDistance, type VoxelEngine } from "@jolly-pixel/voxel.renderer";
+import { ViewDistance, type VoxelView } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import {
   AO_STRENGTH,
-  MAX_DETAIL_CHUNKS,
-  detailChunks,
-  detailDistance
+  MAX_FAR_CHUNKS,
+  farChunks,
+  farDistance
 } from "../app/config.ts";
 import type { Tileset } from "../blocks/registry.ts";
 import { createEditorArchive } from "../export/editorArchive.ts";
@@ -40,7 +40,7 @@ export interface BuildReport {
 
 export interface PanelContext {
   world: WorldDefinition;
-  engine: VoxelEngine;
+  voxels: VoxelView;
   lighting: Lighting;
   pipeline: ScenePipeline;
   effects: Effects;
@@ -61,7 +61,7 @@ export interface FrameSample {
 export function createBenchmarkPanel(
   context: PanelContext
 ): { update: (sample: FrameSample) => void; } {
-  const { world, engine, build } = context;
+  const { world, voxels, build } = context;
   const dock = DockFacade.query("#tools");
   keepCanvasFocused(dock.element);
   document.addEventListener("keydown", (event) => {
@@ -81,7 +81,7 @@ export function createBenchmarkPanel(
   const stats = {
     fps: 0,
     frameMs: 0,
-    voxels: engine.world.voxelCount,
+    voxels: voxels.document.world.voxelCount,
     chunks: build.chunkCount,
     meshed: 0,
     triangles: 0,
@@ -116,7 +116,7 @@ export function createBenchmarkPanel(
     Object.keys(build.timings).map((name) => [name, { label: name.toLowerCase(), format: formatMilliseconds }])
   ));
   benchmark.addButton({ title: "Measure save/load" }).on("click", async() => {
-    stats.saved = await measureSaveLoad(engine);
+    stats.saved = await measureSaveLoad(voxels);
     benchmark.refresh();
   });
 
@@ -147,7 +147,7 @@ export function createBenchmarkPanel(
  */
 function addEditorExport(
   pane: Pane,
-  { world, engine, tileset, build }: PanelContext
+  { world, voxels, tileset, build }: PanelContext
 ): void {
   const status = { exported: "Not exported yet" };
   const folder = pane.addFolder({ title: "Voxel-map editor", expanded: false });
@@ -155,7 +155,7 @@ function addEditorExport(
   folder.addButton({ title: "Export .zip" }).on("click", () => {
     try {
       const { bytes, entries } = createEditorArchive({
-        world: engine.save(),
+        world: voxels.document.save(),
         name: world.id,
         tileset: {
           id: tileset.definition.id,
@@ -191,42 +191,30 @@ function download(
 
 function addRenderToggles(
   pane: Pane,
-  { engine, lighting, pipeline, effects }: PanelContext
+  { voxels, lighting, pipeline, effects }: PanelContext
 ): void {
   const options = {
     shadows: lighting.shadows,
-    occlusion: engine.ambientOcclusion > 0,
+    occlusion: voxels.lighting.ambientOcclusion > 0,
     gtao: pipeline.gtao,
     oit: pipeline.oit,
-    greedy: engine.greedy,
-    pulling: engine.vertexPulling,
     water: true,
     clouds: true,
     wireframe: false,
     chunkBounds: false,
     distance: 0,
-    far: detailChunks(engine.farDistance),
-    lod: detailChunks(engine.lodDistance)
+    far: farChunks(voxels.range.farDistance)
   };
-  const detail = { min: 0, max: MAX_DETAIL_CHUNKS, step: 1 };
 
   const render = pane.addFolder({ title: "Render" });
   render.addBinding(options, "shadows").on("change", ({ value }) => lighting.setShadows(value));
+  // Rebuilds every chunk when the occlusion turns on or off.
   render.addBinding(options, "occlusion", { label: "ambient occlusion" }).on("change", ({ value }) => {
-    engine.ambientOcclusion = value ? AO_STRENGTH : 0;
+    voxels.lighting.ambientOcclusion = value ? AO_STRENGTH : 0;
     lighting.refreshShadows();
   });
   render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => pipeline.set({ gtao: value }));
   render.addBinding(options, "oit", { label: "OIT water" }).on("change", ({ value }) => pipeline.set({ oit: value }));
-  // Both setters rebuild every chunk; greedy takes precedence over pulling.
-  render.addBinding(options, "greedy").on("change", ({ value }) => {
-    engine.greedy = value;
-    lighting.refreshShadows();
-  });
-  render.addBinding(options, "pulling", { label: "vertex pulling" }).on("change", ({ value }) => {
-    engine.vertexPulling = value;
-    lighting.refreshShadows();
-  });
   render.addBinding(options, "water").on("change", ({ value }) => {
     effects.water.visible = value;
   });
@@ -234,22 +222,18 @@ function addRenderToggles(
     effects.clouds.visible = value;
   });
   render.addBinding(options, "distance", { min: 0, max: 12, step: 1 }).on("change", ({ value }) => {
-    engine.viewDistance = value ? new ViewDistance({ chunks: value }) : ViewDistance.Unlimited;
+    voxels.range.viewDistance = value ? new ViewDistance({ chunks: value }) : ViewDistance.Unlimited;
     lighting.refreshShadows();
   });
-  render.addBinding(options, "far", { label: "flat tiles", ...detail }).on("change", ({ value }) => {
-    engine.farDistance = detailDistance(value);
-  });
-  render.addBinding(options, "lod", { label: "half resolution", ...detail }).on("change", ({ value }) => {
-    engine.lodDistance = detailDistance(value);
-    // The engine applies the distance on its next tick, then remeshes.
-    requestAnimationFrame(() => lighting.refreshShadows());
+  // Swaps chunk materials without remeshing.
+  render.addBinding(options, "far", { label: "flat tiles", min: 0, max: MAX_FAR_CHUNKS, step: 1 }).on("change", ({ value }) => {
+    voxels.range.farDistance = farDistance(value);
   });
   render.addBinding(options, "wireframe").on("change", ({ value }) => {
-    engine.inspector.mode = value ? "wireframe" : "off";
+    voxels.inspector.mode = value ? "wireframe" : "off";
   });
   render.addBinding(options, "chunkBounds").on("change", ({ value }) => {
-    engine.inspector.chunkBounds = value;
+    voxels.inspector.chunkBounds = value;
   });
 }
 
@@ -259,16 +243,16 @@ function addRenderToggles(
  * only queues them.
  */
 async function measureSaveLoad(
-  engine: VoxelEngine
+  voxels: Pick<VoxelView, "document" | "whenIdle">
 ): Promise<string> {
   const saveStart = performance.now();
-  const saved = engine.save();
+  const saved = voxels.document.save();
   const saveMs = performance.now() - saveStart;
   const json = JSON.stringify(saved);
 
   const loadStart = performance.now();
-  engine.load(JSON.parse(json));
-  await engine.whenIdle();
+  voxels.document.load(JSON.parse(json));
+  await voxels.whenIdle();
   const loadMs = performance.now() - loadStart;
 
   return `${saveMs.toFixed(0)} / ${loadMs.toFixed(0)} ms · ${(json.length / 1048576).toFixed(1)} MiB`;

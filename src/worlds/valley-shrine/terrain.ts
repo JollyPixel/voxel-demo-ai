@@ -289,8 +289,8 @@ export function heightAt(
 export const CASCADE_WATER = SITE.cascade.top - 2.4;
 
 /*
- * Rock strata: every band of voxels takes one material and one tile, so
- * faces within a band stay mergeable.
+ * Rock strata: every band of voxels takes one material and one tile, so the
+ * cliffs read as layered rock rather than noise.
  */
 const kStrata: readonly Block[][] = [B.rock, B.rock, B.rock, B.paleRock, B.rock, B.rock, B.paleRock, B.darkRock].map(
   (block) => block.ids.map((_, index) => alternateOf(block, index))

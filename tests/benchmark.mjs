@@ -2,11 +2,11 @@ import { chromium } from '../../editor/node_modules/@playwright/test/index.mjs';
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const scenarios = [
-  ['pulling', '?shadows=1&copies=1'],
-  ['naive', '?pulling=0&shadows=1&copies=1'],
-  ['greedy', '?greedy=1&shadows=1&copies=1'],
+  ['workers', '?shadows=1&copies=1'],
+  ['main-thread', '?workers=0&shadows=1&copies=1'],
   ['shadows-off', '?shadows=0&copies=1'],
-  ['four-copies', '?shadows=1&copies=4']
+  ['four-copies', '?shadows=1&copies=4'],
+  ['four-copies-main-thread', '?workers=0&shadows=1&copies=4']
 ];
 for (const [name, query] of scenarios) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

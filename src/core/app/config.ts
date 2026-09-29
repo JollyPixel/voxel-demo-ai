@@ -1,44 +1,42 @@
 /**
- * Strength of the ambient occlusion the mesher bakes into chunk vertices.
+ * Strength of the ambient occlusion the mesher bakes into chunk faces.
  */
 export const AO_STRENGTH = 0.75;
 
 /**
- * Edge of a chunk, in voxels. Detail distances are counted in chunks.
+ * Edge of a chunk, in voxels. View and flat-tile distances are counted in
+ * chunks.
  */
 export const CHUNK_SIZE = 32;
 
 /**
- * Upper bound of the `far` and `lod` detail distances, in chunks.
+ * Upper bound of the `far` distance, in chunks.
  */
-export const MAX_DETAIL_CHUNKS = 24;
+export const MAX_FAR_CHUNKS = 24;
 
 /**
- * World units of a detail distance given in chunks; 0 turns it off.
+ * The engine's `range.farDistance` for a distance in chunks; 0 turns it off.
  */
-export function detailDistance(
+export function farDistance(
   chunks: number
 ): number {
-  return chunks === 0 ? Infinity : chunks * CHUNK_SIZE;
+  return chunks === 0 ? Infinity : chunks;
 }
 
 /**
- * Chunks of a detail distance in world units; Infinity reads as 0.
+ * Chunks of an engine `range.farDistance`; Infinity reads as 0.
  */
-export function detailChunks(
+export function farChunks(
   distance: number
 ): number {
-  return Number.isFinite(distance) ? Math.round(distance / CHUNK_SIZE) : 0;
+  return Number.isFinite(distance) ? distance : 0;
 }
 
 // CONSTANTS
 /**
- * Default detail distances, in chunks (256 and 384 world units). From the
- * Valley Shrine overview only the far peaks drop to half resolution; the
- * distant copies of `?copies=4` do too.
+ * Default flat-tile distance, in chunks (256 world units).
  */
 const kDefaultFarChunks = 8;
-const kDefaultLodChunks = 12;
 
 /**
  * Upper bound of the `workers` parameter.
@@ -56,18 +54,9 @@ export interface DemoConfig {
    * Scene copies tiled on a grid, for stress testing.
    */
   copies: number;
-  /**
-   * Greedy meshing; the engine ignores vertex pulling while it is on.
-   */
-  greedy: boolean;
-  /**
-   * Chunks store one 8-byte record per face; the vertex shader rebuilds the
-   * corners from a shared face template table.
-   */
-  pulling: boolean;
   shadows: boolean;
   /**
-   * Ambient occlusion baked into the chunk vertices by the mesher.
+   * Ambient occlusion baked into the chunk faces by the mesher.
    */
   ao: boolean;
   /**
@@ -88,14 +77,9 @@ export interface DemoConfig {
    */
   far: number;
   /**
-   * Chunks from the camera beyond which chunks mesh at half resolution;
-   * 0 keeps full detail.
-   */
-  lod: number;
-  /**
    * Web Workers that mesh chunks; 0 meshes on the main thread. Workers need a
    * cross-origin isolated page; without one the engine meshes on the main
-   * thread and logs a warning.
+   * thread.
    */
   workers: number;
   /**
@@ -125,15 +109,12 @@ export function readConfig(
     world: params.get("world") ?? (params.get("pad") === "1" ? "test-pad" : defaultWorld),
     seed: clamped("seed", 1337, 1, 0x7fffffff),
     copies: clamped("copies", 1, 1, 4),
-    greedy: params.get("greedy") === "1",
-    pulling: params.get("pulling") !== "0",
     shadows: params.get("shadows") !== "0",
     ao: params.get("ao") !== "0",
     gtao: params.get("gtao") === "1",
     oit: params.get("oit") === "1",
     mips: params.get("mips") !== "0",
-    far: count("far", kDefaultFarChunks, MAX_DETAIL_CHUNKS),
-    lod: count("lod", kDefaultLodChunks, MAX_DETAIL_CHUNKS),
+    far: count("far", kDefaultFarChunks, MAX_FAR_CHUNKS),
     workers: count("workers", defaultWorkerCount(), kMaxWorkers),
     view: params.get("view")
   };

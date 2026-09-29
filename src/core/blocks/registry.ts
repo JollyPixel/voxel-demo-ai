@@ -202,7 +202,7 @@ function paintTileset(
 
 /**
  * One of `block`'s alternate tiles as a block of its own, so a builder can
- * keep neighbouring voxels on the same tile and let their faces merge.
+ * keep neighbouring voxels on the same tile.
  */
 export function alternateOf(
   block: Block,

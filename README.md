@@ -39,25 +39,22 @@ The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performan
 |---|---|---|
 | `world` | `?world=test-pad` | World to build, `floating-tomb` by default |
 | `seed` | `?seed=42` | Reproducible island and vegetation detail |
-| `greedy` | `?greedy=1` | Enable greedy meshing, which turns vertex pulling off |
-| `pulling` | `?pulling=0` | Disable vertex pulling: chunks store four vertices and six indices per face instead of one 8-byte record |
 | `shadows` | `?shadows=0` | Disable sunlight shadows |
 | `copies` | `?copies=4` | Tile up to four copies of the world for stress testing |
-| `ao` | `?ao=0` | Disable the ambient occlusion baked into chunk vertices |
+| `ao` | `?ao=0` | Disable the ambient occlusion baked into chunk faces |
 | `gtao` | `?gtao=1` | Add screen-space ambient occlusion (GTAO) as a camera post-process |
 | `oit` | `?oit=1` | Composite the water with the engine's weighted blended transparency pass (`voxelTransparencyPass`) instead of sorting; combines with `gtao` |
 | `mips` | `?mips=0` | Sample tiles with nearest filtering only, without the engine's distant-tile averaging (distant blocks sparkle) |
 | `far` | `?far=0` | Chunks from the camera beyond which faces draw in their tile's flat average colour, 8 by default; `0` turns it off |
-| `lod` | `?lod=0` | Chunks from the camera beyond which chunks mesh at half resolution, 12 by default; `0` turns it off |
-| `workers` | `?workers=0` | Web Workers that mesh chunks, `min(4, cores - 1)` by default; `0` meshes on the main thread. Half-resolution chunks always mesh on the main thread |
+| `workers` | `?workers=0` | Web Workers that mesh chunks, `min(4, cores - 1)` by default; `0` meshes on the main thread |
 | `view` | `?view=pyramid` | Starting camera pose from the world's views. The Floating Tomb has `overview`, `platform`, `garden`, `tree`, `path`, `arch`, `rotunda`, `pyramid`, `interior` and `waterfall`. The Valley Shrine has `overview`, `valley`, `temple`, `hall`, `pagoda`, `garden`, `bridge`, `drygarden`, `shrine`, `cascade`, `overlook` and `peaks` |
 | `pad` | `?pad=1` | Alias for `?world=test-pad` |
 
-The pane shows construction time by zone, total voxel count, chunk and triangle counts, chunk mesh memory, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, transparent water, greedy meshing, vertex pulling, effects, view and detail distances, and inspector overlays. The scene and the sun never move, so the sun's shadow map is drawn once after meshing and again only when a toggle rebuilds the chunks. The save/load button reports round trip time and JSON size.
+The pane shows construction time by zone, total voxel count, chunk and triangle counts, chunk mesh memory, draw calls, geometry and texture counts, and frame time. It also toggles shadows, baked ambient occlusion, GTAO, transparent water, effects, view and flat-tile distances, and inspector overlays. Every chunk is vertex pulled (one 8-byte record per face); the engine no longer offers greedy meshing or half-resolution chunks. The scene and the sun never move, so the sun's shadow map is drawn once after meshing and again only when a toggle rebuilds the chunks. The save/load button reports round trip time and JSON size.
 
 ## Open in the voxel-map editor
 
-In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map's layers (`maps/<world>.voxelmap.json`, a version 2 document) and a tileset asset (`tilesets/<world>.tileset.json`) with the atlas pixels, block definitions and material finishes. The exporter links the map's tileset to that asset in slot 0; the editor re-partitions the map into its own chunk size on import. It refuses a world over the voxel-map editor's import limits (64 MiB per entry, 128 MiB in total, decoded). One copy of either world fits: the Valley Shrine's map is 21.5 MiB and its tileset 0.4 MiB (see F-9). Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Turn on **Reflections** in the editor's View section to see the gold finish. Lights, water and sky belong to the scene, not the map. See F-9 to F-11 in [FEEDBACK.md](FEEDBACK.md) for the open interop issues.
+In the pane, the **Voxel-map editor** folder's **Export .zip** button downloads the world as an asset archive. In the editor, open **General → Map Config → Import (.zip)**, online or with `?offline`. The archive holds the map's layers (`maps/<world>.voxelmap.json`, a version 3 document) and a tileset asset (`tilesets/<world>.tileset.json`) with the atlas pixels, block definitions and material finishes. The exporter links the map's tileset to that asset in slot 0; the editor re-partitions the map into its own chunk size on import. It refuses a world over the voxel-map editor's import limits (64 MiB per entry, 128 MiB in total, decoded). The Valley Shrine's map is 1.9 MiB and its tileset 0.4 MiB, well under those limits. Asset ids are derived from the world id, so choose **Replace** on import to update an earlier export. Turn on **Reflections** in the editor's View section to see the gold finish. Lights, water and sky belong to the scene, not the map. See F-10 and F-11 in [FEEDBACK.md](FEEDBACK.md) for the open interop issues.
 
 ## Check
 
