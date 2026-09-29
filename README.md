@@ -31,7 +31,7 @@ The dev and preview servers send `Cross-Origin-Opener-Policy` and `Cross-Origin-
 
 `setup` links the editor packages, TypeScript, Oxlint, Vite, Three.js, and the shared `@openally` configs into this repo's ignored `node_modules`. It uses the installed editor workspace without downloading duplicate tooling. Open the local URL printed by Vite.
 
-The UI uses `@jolly-pixel/ui` for its dock, pane, controls legend, and performance tile. Press **F3** to toggle the pane. Hold the middle mouse button to look around, use **WASD** to fly, **Space/Shift** to rise or descend, and scroll while looking to change speed.
+The UI uses `@jolly-pixel/ui` for its dock, pane, and performance tile. Press **F3** to hide the whole HUD (pane and performance tile), e.g. for screenshots. Hold the middle mouse button to look around, use **WASD** to fly, **Space/Shift** to rise or descend, and scroll while looking to change speed.
 
 ## Query parameters
 

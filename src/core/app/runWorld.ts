@@ -134,6 +134,7 @@ export async function runWorld(
     pipeline,
     effects,
     tileset,
+    overlay: runtime.overlay.element,
     build: {
       seed: config.seed,
       copies: config.copies,

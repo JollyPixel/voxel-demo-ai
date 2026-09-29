@@ -46,6 +46,8 @@ export interface PanelContext {
   effects: Effects;
   tileset: Tileset;
   build: BuildReport;
+  /** Runtime overlay holding the performance tile, hidden along with the dock. */
+  overlay: HTMLElement;
 }
 
 export interface FrameSample {
@@ -56,18 +58,21 @@ export interface FrameSample {
 }
 
 /**
- * Benchmark readouts and render toggles, docked on the right. F3 hides it.
+ * Benchmark readouts and render toggles, docked on the right. F3 hides the
+ * whole HUD (dock and performance tile), e.g. to take screenshots.
  */
 export function createBenchmarkPanel(
   context: PanelContext
 ): { update: (sample: FrameSample) => void; } {
-  const { world, voxels, build } = context;
+  const { world, voxels, build, overlay } = context;
   const dock = DockFacade.query("#tools");
   keepCanvasFocused(dock.element);
   document.addEventListener("keydown", (event) => {
     if (event.key === "F3") {
       event.preventDefault();
-      dock.hidden = !dock.hidden;
+      const hidden = !dock.hidden;
+      dock.hidden = hidden;
+      overlay.style.visibility = hidden ? "hidden" : "";
     }
   });
 
