@@ -3,14 +3,12 @@ import * as THREE from "three/webgpu";
 import type { VoxelView } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
-import type { PointLightFixture } from "../builder/fixtures.ts";
 import type { Bounds } from "../world.ts";
 import { sunDirection, type Atmosphere } from "./atmosphere.ts";
 
 export interface LightingOptions {
   shadows: boolean;
   atmosphere: Atmosphere;
-  lights: readonly PointLightFixture[];
   /**
    * The sun's shadow map is fitted to these bounds.
    */
@@ -18,17 +16,18 @@ export interface LightingOptions {
   /**
    * The voxel view, whose chunk meshes carry shadow flags of their own.
    */
-  voxels: Pick<VoxelView, "lighting" | "whenIdle">;
+  voxels: Pick<VoxelView, "lighting" | "meshVersion" | "pendingRebuilds">;
 }
 
 export interface Lighting {
   readonly shadows: boolean;
   setShadows: (enabled: boolean) => void;
   /**
-   * Redraws the sun's shadow map once the chunks have finished meshing. The
-   * scene and the sun are static, so the map is only drawn on request.
+   * Call once per frame. The scene and the sun are static, so the sun's
+   * shadow map is redrawn only after the chunk meshes changed
+   * (`view.meshVersion`) and the view has nothing left to mesh.
    */
-  refreshShadows: () => void;
+  update: () => void;
 }
 
 /**
@@ -49,7 +48,8 @@ export function configureRendering(
 }
 
 /**
- * The sun over a sky fill, plus the zones' point lights.
+ * The sun over a sky fill. Glowing blocks light their surroundings through
+ * the engine's block light, so the scene has no point lights.
  */
 export function createLighting(
   renderer: THREE.WebGPURenderer,
@@ -59,16 +59,14 @@ export function createLighting(
   const { hemisphere } = options.atmosphere;
   const sun = createSun(options.bounds, options.atmosphere);
   scene.add(new THREE.HemisphereLight(hemisphere.sky, hemisphere.ground, hemisphere.intensity), sun, sun.target);
-  for (const { position, color, intensity, distance } of options.lights) {
-    const light = new THREE.PointLight(color, intensity, distance);
-    light.position.set(...position);
-    scene.add(light);
-  }
 
-  function refreshShadows(): void {
-    void options.voxels.whenIdle().then(() => {
+  let drawnVersion = -1;
+  function update(): void {
+    const { meshVersion, pendingRebuilds } = options.voxels;
+    if (sun.castShadow && pendingRebuilds === 0 && meshVersion !== drawnVersion) {
+      drawnVersion = meshVersion;
       sun.shadow.needsUpdate = true;
-    });
+    }
   }
   function setShadows(enabled: boolean): void {
     const { lighting } = options.voxels;
@@ -76,7 +74,7 @@ export function createLighting(
     renderer.shadowMap.enabled = enabled;
     lighting.castShadow = enabled;
     lighting.receiveShadow = enabled;
-    refreshShadows();
+    drawnVersion = -1;
   }
   setShadows(options.shadows);
 
@@ -85,7 +83,7 @@ export function createLighting(
       return sun.castShadow;
     },
     setShadows,
-    refreshShadows
+    update
   };
 }
 

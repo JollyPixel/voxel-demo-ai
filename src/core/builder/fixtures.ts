@@ -8,7 +8,6 @@ import type { Vec3 } from "./Brush.ts";
 export interface Fixtures {
   pools: PoolFixture[];
   waterfalls: WaterfallFixture[];
-  lights: PointLightFixture[];
 }
 
 export interface PoolFixture {
@@ -25,11 +24,4 @@ export interface WaterfallFixture {
    * Horizontal axis the sheet spans; it faces along the other one.
    */
   axis: "x" | "z";
-}
-
-export interface PointLightFixture {
-  position: Vec3;
-  color: string;
-  intensity: number;
-  distance: number;
 }

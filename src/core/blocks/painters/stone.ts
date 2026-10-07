@@ -205,6 +205,20 @@ export function metal(
 }
 
 /**
+ * Glowing coals: hot cores in a darker crust, brightest towards the bottom.
+ */
+export function embers(
+  palette: Palette
+): TilePainter {
+  const top = palette.size - 1;
+
+  return (tile) => tile.each((u, v) => {
+    const heat = tile.smoothNoise(u, v, 4) * 2 + tile.noise(u, v, 2) * 0.8 + v / tile.size;
+    tile.set(u, v, palette.mix(Math.min(top, heat * top / 3.8)));
+  });
+}
+
+/**
  * Glazed tiles in a 2×2 grid, each with a bright glaze highlight.
  */
 export function glazedTiles(

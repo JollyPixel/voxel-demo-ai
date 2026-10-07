@@ -1,7 +1,9 @@
 // Import Third-party Dependencies
 import {
+  VOXEL_PATCH_STRIDE,
   VoxelTransform,
   type VoxelPatchCells,
+  type VoxelPatchPartners,
   type VoxelTransformOptions,
   type VoxelWorld
 } from "@jolly-pixel/voxel.renderer";
@@ -9,7 +11,7 @@ import {
 // Import Internal Dependencies
 import type { Block } from "../blocks/registry.ts";
 import { hash } from "../utils/noise.ts";
-import type { Fixtures, PointLightFixture } from "./fixtures.ts";
+import type { Fixtures } from "./fixtures.ts";
 
 export type Vec3 = readonly [x: number, y: number, z: number];
 
@@ -40,14 +42,18 @@ interface BrushTarget {
    * Cells written since the last `flush()`, in write order.
    */
   cells: VoxelPatchCells;
+  /**
+   * Second shapes of the merged cells among `cells`.
+   */
+  partners: VoxelPatchPartners;
   fixtures: Fixtures;
 }
 
 /**
  * Writes blocks into the world's layer in local coordinates. Writes are
  * queued as a voxel patch and reach the world on `flush()`, the engine's
- * fastest bulk write. Every scene element that is not a voxel (water,
- * lights) is collected as a fixture at its world position.
+ * fastest bulk write. Every scene element that is not a voxel (pools and
+ * waterfalls) is collected as a fixture at its world position.
  */
 export class Brush {
   static forWorld(
@@ -57,7 +63,7 @@ export class Brush {
       throw new Error(`Brush: missing world layer "${WORLD_LAYER}"`);
     }
 
-    return new Brush({ world, cells: [], fixtures: { pools: [], waterfalls: [], lights: [] } }, [0, 0, 0]);
+    return new Brush({ world, cells: [], partners: [], fixtures: { pools: [], waterfalls: [] } }, [0, 0, 0]);
   }
 
   readonly #target: BrushTarget;
@@ -82,8 +88,9 @@ export class Brush {
   flush(): void {
     const target = this.#target;
     if (target.cells.length > 0) {
-      target.world.patchVoxels(WORLD_LAYER, target.cells);
+      target.world.patchVoxels(WORLD_LAYER, target.cells, target.partners);
       target.cells = [];
+      target.partners = [];
     }
   }
 
@@ -107,10 +114,26 @@ export class Brush {
     transform: VoxelTransformOptions = {}
   ): void {
     const [x, y, z] = this.#cell(position);
-    const { ids } = block;
-    const id = ids.length === 1 ? ids[0] : ids[Math.floor(hash(x, y, z, kAlternateSeed) * ids.length)];
 
-    this.#target.cells.push(x, y, z, id, VoxelTransform.pack(transform));
+    this.#target.cells.push(x, y, z, pickId(block, x, y, z), VoxelTransform.pack(transform));
+  }
+
+  /**
+   * Writes `block` and `partner` into one merged cell. The two shapes must
+   * complement each other, such as a bottom and a top slab.
+   */
+  merge(
+    position: Vec3,
+    block: Block,
+    partner: Block,
+    transform: VoxelTransformOptions = {}
+  ): void {
+    this.put(position, block, transform);
+    const { cells, partners } = this.#target;
+    const cell = cells.length / VOXEL_PATCH_STRIDE - 1;
+    const [x, y, z] = cells.slice(-VOXEL_PATCH_STRIDE);
+
+    partners.push(cell, pickId(partner, x, y, z), VoxelTransform.pack(transform));
   }
 
   box(
@@ -218,13 +241,6 @@ export class Brush {
     this.#target.fixtures.waterfalls.push({ center: this.#world(center), width, height, axis });
   }
 
-  light(
-    position: Vec3,
-    light: Omit<PointLightFixture, "position">
-  ): void {
-    this.#target.fixtures.lights.push({ ...light, position: this.#world(position) });
-  }
-
   #world(
     [x, y, z]: Vec3
   ): Vec3 {
@@ -240,4 +256,13 @@ export class Brush {
 
     return [Math.round(x), Math.round(y), Math.round(z)];
   }
+}
+
+function pickId(
+  { ids }: Block,
+  x: number,
+  y: number,
+  z: number
+): number {
+  return ids.length === 1 ? ids[0] : ids[Math.floor(hash(x, y, z, kAlternateSeed) * ids.length)];
 }

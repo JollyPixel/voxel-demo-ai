@@ -77,6 +77,24 @@ test('flush sends each queued cell once', () => {
   assert.deepEqual(patches, [['World', [0, 0, 0, 1, 0]]]);
 });
 
+test('merge queues a partner for its own cell', () => {
+  const patches = [];
+  const brush = Brush.forWorld({
+    getLayer: (name) => ({ name }),
+    patchVoxels: (name, cells, partners) => patches.push({ cells: [...cells], partners: [...partners] })
+  });
+  brush.put([0, 0, 0], kStone);
+  brush.translated([2, 0, 0]).merge([0, 1, 0], kStone, kLeaves, { rotation: 1 });
+  brush.flush();
+  brush.put([0, 0, 0], kStone);
+  brush.flush();
+  const packed = VoxelTransform.pack({ rotation: 1 });
+  assert.deepEqual(patches, [
+    { cells: [0, 0, 0, 1, 0, 2, 1, 0, 1, packed], partners: [1, 3, packed] },
+    { cells: [0, 0, 0, 1, 0], partners: [] }
+  ]);
+});
+
 test('alternate tiles are chosen from the world position', () => {
   const first = recordingBrush();
   const second = recordingBrush();
@@ -121,7 +139,7 @@ test('orientation helpers follow the engine rotation table', () => {
 test('fixtures are shared and recorded in world coordinates', () => {
   const { brush } = recordingBrush();
   brush.translated([10, 0, 5]).pool([1, 2, 3], 4, 6);
-  brush.light([0, 1, 0], { color: '#fff', intensity: 1, distance: 2 });
+  brush.waterfall([0, 1, 0], 3, 8, 'x');
   assert.deepEqual(brush.fixtures.pools, [{ center: [11, 2, 8], width: 4, depth: 6 }]);
-  assert.deepEqual(brush.fixtures.lights[0].position, [0, 1, 0]);
+  assert.deepEqual(brush.fixtures.waterfalls, [{ center: [0, 1, 0], width: 3, height: 8, axis: 'x' }]);
 });

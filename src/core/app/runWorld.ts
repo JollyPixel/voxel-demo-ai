@@ -3,7 +3,7 @@ import * as THREE from "three/webgpu";
 import { Runtime } from "@jolly-pixel/runtime";
 import { OrbitFlyCamera } from "@jolly-pixel/engine";
 import { VoxelRenderer } from "@jolly-pixel/voxel.renderer/engine";
-import { loadTilesets } from "@jolly-pixel/voxel.renderer";
+import { loadBlocksets } from "@jolly-pixel/voxel.renderer";
 
 // Import Internal Dependencies
 import { createBenchmarkPanel } from "../bench/panel.ts";
@@ -36,7 +36,7 @@ export async function runWorld(
   const loading = showLoading(`Building ${world.title}…`);
   const { atmosphere, blocks } = world;
 
-  const tileset = blocks.createTileset();
+  const blockset = blocks.createBlockset();
   const runtime = await Runtime.create("#scene", {
     includePerformanceStats: { mount: true, position: "bottom-right" },
     focusCanvas: false
@@ -61,16 +61,16 @@ export async function runWorld(
     document: {
       chunkSize: CHUNK_SIZE,
       layers: [WORLD_LAYER],
-      blocks: tileset.blocks,
+      blocks: blockset.blocks,
       materialGroups: blocks.materialGroups
     },
-    tilesets: await loadTilesets([tileset.definition]),
+    blocksets: await loadBlocksets([blockset.definition]),
     rendering: {
       material: "standard",
       alphaTest: 0.35,
       tileMinification: config.mips ? "average" : "nearest",
       // Grouped blocks already carry their group's finish; this runs after it.
-      customizer: (material, _tilesetId, surface) => {
+      customizer: (material, _blocksetId, surface) => {
         if (surface.materialGroup === undefined && material instanceof THREE.MeshStandardMaterial) {
           Object.assign(material, DEFAULT_FINISH);
         }
@@ -107,7 +107,6 @@ export async function runWorld(
   const lighting = createLighting(renderer, scene, {
     shadows: config.shadows,
     atmosphere,
-    lights: brush.fixtures.lights,
     bounds: sceneBounds(world, config.copies),
     voxels
   });
@@ -133,7 +132,7 @@ export async function runWorld(
     lighting,
     pipeline,
     effects,
-    tileset,
+    blockset,
     overlay: runtime.overlay.element,
     build: {
       seed: config.seed,
@@ -153,6 +152,7 @@ export async function runWorld(
 
     function frame(now: number): void {
       effects.animate(Math.min(0.1, (now - last) / 1000));
+      lighting.update();
       last = now;
 
       if (++frames % kStatsInterval === 0) {

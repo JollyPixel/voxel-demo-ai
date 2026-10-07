@@ -4,7 +4,7 @@ import type { IslandBlocks } from "../../core/builder/FloatingIsland.ts";
 import { FINISHES, MATERIALS } from "./materials.ts";
 
 export const BLOCKS = defineBlocks(MATERIALS, {
-  tilesetId: "tomb",
+  blocksetId: "tomb",
   finishes: FINISHES
 });
 

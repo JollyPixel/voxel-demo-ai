@@ -6,16 +6,16 @@ import {
   DEFAULT_CHUNK_SIZE,
   decodeVoxelWorld,
   deserializeVoxelWorld,
-  projectTilesetBlock,
-  TilesetDocument,
-  TilesetList,
+  BlocksetDocument,
+  BlocksetList,
+  BlocksetSlot,
   VoxelDocument,
   VoxelWorld
 } from '@jolly-pixel/voxel.renderer';
 import { createEditorArchive, EditorArchiveError } from '../src/core/export/editorArchive.ts';
 
 const kAtlas = { width: 64, height: 32, data: new Uint8ClampedArray(64 * 32 * 4).fill(200) };
-const kTileset = {
+const kBlockset = {
   id: 'tomb',
   tileSize: 32,
   atlas: kAtlas,
@@ -26,22 +26,22 @@ const kTileset = {
     collidable: true,
     faceTextures: { top: [0, 0] },
     defaultTexture: [1, 0],
-    defaultTilesetId: 'tomb',
+    defaultBlocksetId: 'tomb',
     materialGroup: 'gold'
   }],
   materialGroups: [{ id: 'gold', roughness: 0.38, metalness: 0.75, emissive: '#000000', emissiveIntensity: 1 }]
 };
 
 /**
- * A saved one-layer world holding `cells`, a voxel patch.
+ * A saved one-layer world holding `cells` and `partners`, a voxel patch.
  */
-function savedWorld(cells = [-3, 4, 70, 1, 0]) {
+function savedWorld(cells = [-3, 4, 70, 1, 0], partners = []) {
   const document = new VoxelDocument({
     chunkSize: 32,
     layers: ['Terrain'],
-    tilesets: [{ id: 'tomb', slot: 0, src: 'data:image/png;base64,AAAA', tileSize: 32, cols: 2, rows: 1 }]
+    blocksets: [{ id: 'tomb', slot: 0, src: 'data:image/png;base64,AAAA', tileSize: 32, cols: 2, rows: 1 }]
   });
-  document.world.patchVoxels('Terrain', cells);
+  document.world.patchVoxels('Terrain', cells, partners);
 
   return document.save();
 }
@@ -51,65 +51,76 @@ function unzip(bytes) {
 }
 
 function archive(options = {}) {
-  return createEditorArchive({ world: savedWorld(), tileset: kTileset, name: 'floating-tomb', ...options });
+  return createEditorArchive({ world: savedWorld(), blockset: kBlockset, name: 'floating-tomb', ...options });
 }
 
-function tilesetAsset(files) {
-  return JSON.parse(strFromU8(files['tilesets/floating-tomb.tileset.json']));
+function blocksetAsset(files) {
+  return JSON.parse(strFromU8(files['blocksets/floating-tomb.blockset.json']));
 }
 
-test('lists the tileset before the map root in the manifest', () => {
+test('lists the blockset before the map root in the manifest', () => {
   const files = unzip(archive().bytes);
   const manifest = JSON.parse(strFromU8(files['bundle.json']));
 
   assert.deepEqual(Object.keys(files).sort(), [
+    'blocksets/floating-tomb.blockset.json',
     'bundle.json',
-    'maps/floating-tomb.voxelmap.json',
-    'tilesets/floating-tomb.tileset.json'
+    'maps/floating-tomb.voxelmap.json'
   ]);
   assert.deepEqual(manifest.root, { id: 'floating-tomb-map', kind: 'voxelmap' });
-  assert.deepEqual(manifest.assets.map(({ kind }) => kind), ['tileset', 'voxelmap']);
+  assert.deepEqual(manifest.assets.map(({ kind }) => kind), ['blockset', 'voxelmap']);
 });
 
-test('writes a version 3 map an editor world of the default chunk size loads', () => {
+test('writes a version 5 map an editor world of the default chunk size loads', () => {
   const files = unzip(archive().bytes);
   const document = decodeVoxelWorld(files['maps/floating-tomb.voxelmap.json']);
   const world = new VoxelWorld(DEFAULT_CHUNK_SIZE);
-  const tilesets = new TilesetList();
-  deserializeVoxelWorld(document, world, { tilesets });
+  const blocksets = new BlocksetList();
+  deserializeVoxelWorld(document, world, { blocksets });
 
-  assert.equal(document.version, 3);
+  assert.equal(document.version, 5);
   assert.equal(document.chunkSize, 32);
-  assert.deepEqual(document.tilesets, [
-    { id: 'tomb', slot: 0, asset: { id: 'floating-tomb-tileset', kind: 'tileset' } }
+  assert.deepEqual(document.blocksets, [
+    { id: 'tomb', slot: 0, asset: { id: 'floating-tomb-blockset', kind: 'blockset' } }
   ]);
   assert.equal(world.voxelCount, 1);
   assert.equal(world.getVoxelAt({ x: -3, y: 4, z: 70 })?.blockId, 1);
 });
 
-test('stores the atlas, blocks and finishes in the tileset asset', () => {
-  const asset = tilesetAsset(unzip(archive().bytes));
-  const pixels = parsePixelArtDocument(asset.pixels);
-  const tileset = new TilesetDocument(asset);
+test('keeps both shapes of a merged cell', () => {
+  const files = unzip(archive({ world: savedWorld([-3, 4, 70, 1, 0], [0, 2, 0]) }).bytes);
+  const world = new VoxelWorld(DEFAULT_CHUNK_SIZE);
+  deserializeVoxelWorld(decodeVoxelWorld(files['maps/floating-tomb.voxelmap.json']), world, { blocksets: new BlocksetList() });
+  const entry = world.getVoxelAt({ x: -3, y: 4, z: 70 });
 
-  assert.equal(asset.version, 1);
-  assert.equal(tileset.tileSize, 32);
-  assert.deepEqual(pixels.size, { x: 64, y: 32 });
-  assert.equal(tileset.materialGroups.get('gold')?.metalness, 0.75);
-
-  const [block] = tileset.blocks;
-  assert.equal(block.name, 'Sandstone');
-  assert.equal(block.defaultTexture.tilesetId, undefined);
-  assert.equal(block.faceTextures.top.tilesetId, undefined);
+  assert.equal(world.voxelCount, 1);
+  assert.equal(entry?.blockId, 1);
+  assert.equal(entry?.partner?.blockId, 2);
 });
 
-test('tileset blocks project onto the ids the map stores', () => {
-  const asset = tilesetAsset(unzip(archive().bytes));
-  const [block] = new TilesetDocument(asset).blocks;
-  const projected = projectTilesetBlock({ id: 'tomb', slot: 0 }, block);
+test('stores the atlas, blocks and finishes in the blockset asset', () => {
+  const asset = blocksetAsset(unzip(archive().bytes));
+  const pixels = parsePixelArtDocument(asset.pixels);
+  const blockset = new BlocksetDocument(asset);
+
+  assert.equal(asset.version, 1);
+  assert.equal(blockset.tileSize, 32);
+  assert.deepEqual(pixels.size, { x: 64, y: 32 });
+  assert.equal(blockset.materialGroups.get('gold')?.metalness, 0.75);
+
+  const [block] = blockset.blocks;
+  assert.equal(block.name, 'Sandstone');
+  assert.equal(block.defaultTexture.blocksetId, undefined);
+  assert.equal(block.faceTextures.top.blocksetId, undefined);
+});
+
+test('blockset blocks project onto the ids the map stores', () => {
+  const asset = blocksetAsset(unzip(archive().bytes));
+  const [block] = new BlocksetDocument(asset).blocks;
+  const projected = new BlocksetSlot({ id: 'tomb', slot: 0 }).project(block);
 
   assert.equal(projected.id, 1);
-  assert.equal(projected.defaultTexture.tilesetId, 'tomb');
+  assert.equal(projected.defaultTexture.blocksetId, 'tomb');
   assert.equal(projected.materialGroup, 'tomb/gold');
 });
 
@@ -135,9 +146,9 @@ test('refuses an archive over the editor limits', () => {
   );
 });
 
-test('refuses a tileset the world does not declare', () => {
+test('refuses a blockset the world does not declare', () => {
   assert.throws(
-    () => archive({ tileset: { ...kTileset, id: 'other' } }),
+    () => archive({ blockset: { ...kBlockset, id: 'other' } }),
     EditorArchiveError
   );
 });

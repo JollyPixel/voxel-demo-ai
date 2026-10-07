@@ -16,7 +16,7 @@ import {
   farChunks,
   farDistance
 } from "../app/config.ts";
-import type { Tileset } from "../blocks/registry.ts";
+import type { PaintedBlockset } from "../blocks/registry.ts";
 import { createEditorArchive } from "../export/editorArchive.ts";
 import type { ScenePipeline } from "../scene/pipeline.ts";
 import type { Effects } from "../scene/effects.ts";
@@ -44,7 +44,7 @@ export interface PanelContext {
   lighting: Lighting;
   pipeline: ScenePipeline;
   effects: Effects;
-  tileset: Tileset;
+  blockset: PaintedBlockset;
   build: BuildReport;
   /** Runtime overlay holding the performance tile, hidden along with the dock. */
   overlay: HTMLElement;
@@ -152,7 +152,7 @@ export function createBenchmarkPanel(
  */
 function addEditorExport(
   pane: Pane,
-  { world, voxels, tileset, build }: PanelContext
+  { world, voxels, blockset, build }: PanelContext
 ): void {
   const status = { exported: "Not exported yet" };
   const folder = pane.addFolder({ title: "Voxel-map editor", expanded: false });
@@ -162,11 +162,11 @@ function addEditorExport(
       const { bytes, entries } = createEditorArchive({
         world: voxels.document.save(),
         name: world.id,
-        tileset: {
-          id: tileset.definition.id,
-          tileSize: tileset.definition.tileSize,
-          atlas: tileset.atlas,
-          blocks: tileset.blocks,
+        blockset: {
+          id: blockset.definition.id,
+          tileSize: blockset.definition.tileSize,
+          atlas: blockset.atlas,
+          blocks: blockset.blocks,
           materialGroups: world.blocks.materialGroups
         }
       });
@@ -201,6 +201,7 @@ function addRenderToggles(
   const options = {
     shadows: lighting.shadows,
     occlusion: voxels.lighting.ambientOcclusion > 0,
+    blockLight: voxels.lighting.blockLight > 0,
     gtao: pipeline.gtao,
     oit: pipeline.oit,
     water: true,
@@ -216,7 +217,10 @@ function addRenderToggles(
   // Rebuilds every chunk when the occlusion turns on or off.
   render.addBinding(options, "occlusion", { label: "ambient occlusion" }).on("change", ({ value }) => {
     voxels.lighting.ambientOcclusion = value ? AO_STRENGTH : 0;
-    lighting.refreshShadows();
+  });
+  // The braziers' embers: their material group's lightLevel.
+  render.addBinding(options, "blockLight", { label: "block light" }).on("change", ({ value }) => {
+    voxels.lighting.blockLight = value ? 1 : 0;
   });
   render.addBinding(options, "gtao", { label: "GTAO" }).on("change", ({ value }) => pipeline.set({ gtao: value }));
   render.addBinding(options, "oit", { label: "OIT water" }).on("change", ({ value }) => pipeline.set({ oit: value }));
@@ -228,7 +232,6 @@ function addRenderToggles(
   });
   render.addBinding(options, "distance", { min: 0, max: 12, step: 1 }).on("change", ({ value }) => {
     voxels.range.viewDistance = value ? new ViewDistance({ chunks: value }) : ViewDistance.Unlimited;
-    lighting.refreshShadows();
   });
   // Swaps chunk materials without remeshing.
   render.addBinding(options, "far", { label: "flat tiles", min: 0, max: MAX_FAR_CHUNKS, step: 1 }).on("change", ({ value }) => {

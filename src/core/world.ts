@@ -1,5 +1,5 @@
 // Import Internal Dependencies
-import type { BlockSet } from "./blocks/registry.ts";
+import type { BlockCatalog } from "./blocks/registry.ts";
 import type { Brush, Vec3 } from "./builder/Brush.ts";
 import type { Atmosphere } from "./scene/atmosphere.ts";
 import { createRandom, type Random } from "./utils/random.ts";
@@ -29,7 +29,7 @@ export interface Bounds {
 export interface WorldDefinition {
   id: string;
   title: string;
-  blocks: BlockSet;
+  blocks: BlockCatalog;
   /**
    * The scene, in build order. Zones share one random stream, so reordering
    * them reshuffles every seeded detail.

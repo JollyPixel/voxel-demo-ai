@@ -48,6 +48,12 @@ export interface SurfaceFinish {
    */
   emissive?: string;
   emissiveIntensity?: number;
+  /**
+   * Block light, 0 to 15, cast on the blocks around in the `emissive` hue.
+   * The engine spreads it on the CPU, one level less per cell, so unlike a
+   * point light it costs nothing per pixel.
+   */
+  lightLevel?: number;
 }
 
 /**

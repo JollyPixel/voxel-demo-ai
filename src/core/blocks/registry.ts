@@ -4,7 +4,7 @@ import type {
   BlockShapeID,
   FaceSlotName,
   MaterialGroupJSON,
-  ResolvedTilesetDefinition,
+  ResolvedBlocksetDefinition,
   TileRef
 } from "@jolly-pixel/voxel.renderer";
 
@@ -40,8 +40,8 @@ export type MaterialBlocks<Materials extends Record<string, MaterialSpec>> = {
   };
 };
 
-export interface Tileset {
-  definition: ResolvedTilesetDefinition;
+export interface PaintedBlockset {
+  definition: ResolvedBlocksetDefinition;
   blocks: BlockDefinition[];
   /**
    * The painted atlas as RGBA8, for exporters that cannot read the data URL.
@@ -49,8 +49,8 @@ export interface Tileset {
   atlas: ImageData;
 }
 
-export interface BlockSetOptions {
-  tilesetId: string;
+export interface BlockCatalogOptions {
+  blocksetId: string;
   /**
    * Finish of each material group, by group name. Every `group` a material
    * names needs one.
@@ -58,7 +58,7 @@ export interface BlockSetOptions {
   finishes?: Record<string, SurfaceFinish>;
 }
 
-export interface BlockSet<
+export interface BlockCatalog<
   Materials extends Record<string, MaterialSpec> = Record<string, MaterialSpec>
 > {
   /**
@@ -70,7 +70,7 @@ export interface BlockSet<
    * The finishes as document material groups, saved with the world.
    */
   readonly materialGroups: readonly MaterialGroupJSON[];
-  createTileset: () => Tileset;
+  createBlockset: () => PaintedBlockset;
 }
 
 /**
@@ -81,9 +81,9 @@ export function defineBlocks<
   const Materials extends Record<string, MaterialSpec>
 >(
   materials: Materials,
-  options: BlockSetOptions
-): BlockSet<Materials> {
-  const { tilesetId, finishes = {} } = options;
+  options: BlockCatalogOptions
+): BlockCatalog<Materials> {
+  const { blocksetId, finishes = {} } = options;
   const definitions: BlockDefinition[] = [];
   const tiles: TilePainter[] = [];
   const blocks: Record<string, Block> = {};
@@ -102,7 +102,7 @@ export function defineBlocks<
       name,
       shapeId,
       defaultTexture: tile,
-      defaultTilesetId: tilesetId,
+      defaultBlocksetId: blocksetId,
       faceTextures,
       collidable: !spec.cutout,
       ...(spec.cutout ? { alphaMode: "mask" as const } : {}),
@@ -139,8 +139,8 @@ export function defineBlocks<
     materialGroups: Object.entries(finishes).map(([id, finish]) => {
       return { id, ...finish };
     }),
-    createTileset() {
-      return paintTileset(tilesetId, tiles, definitions);
+    createBlockset() {
+      return paintBlockset(blocksetId, tiles, definitions);
     }
   };
 }
@@ -165,11 +165,11 @@ function allocateFaceTiles(
  * Paints every tile and lays them out in one atlas, handed over as a data
  * URL so the demo ships no image asset.
  */
-function paintTileset(
-  tilesetId: string,
+function paintBlockset(
+  blocksetId: string,
   tiles: readonly TilePainter[],
   definitions: BlockDefinition[]
-): Tileset {
+): PaintedBlockset {
   const rows = Math.ceil(tiles.length / kAtlasCols);
   const canvas = document.createElement("canvas");
   canvas.width = kAtlasCols * TILE_SIZE;
@@ -189,7 +189,7 @@ function paintTileset(
 
   return {
     definition: {
-      id: tilesetId,
+      id: blocksetId,
       src: canvas.toDataURL("image/png"),
       tileSize: TILE_SIZE,
       cols: kAtlasCols,

@@ -10,6 +10,7 @@ import {
 } from "../../core/blocks/painters/ground.ts";
 import {
   carved,
+  embers,
   flagstones,
   fluted,
   frieze,
@@ -23,7 +24,8 @@ import {
 import { lowRes, Palette } from "../../core/blocks/painters/tile.ts";
 
 export const FINISHES = {
-  gold: { roughness: 0.38, metalness: 0.75 }
+  gold: { roughness: 0.38, metalness: 0.75 },
+  fire: { roughness: 1, metalness: 0, emissive: "#ff8a2a", emissiveIntensity: 1.4, lightLevel: 12 }
 } as const satisfies Record<string, SurfaceFinish>;
 
 // CONSTANTS
@@ -36,6 +38,7 @@ const kGreyGranite = new Palette("#56565c", "#6b6b72", "#818189", "#96969d", "#a
 const kFlecks = new Palette("#15161a", "#9a968f");
 const kLapis = new Palette("#0f2447", "#16336a", "#1f4589", "#2b58a6", "#3a6fc2");
 const kGold = new Palette("#7a5410", "#a8761b", "#d09a2a", "#eebd45", "#fbd970", "#fff2b5");
+const kEmbers = new Palette("#5a1606", "#9a2f08", "#d8560e", "#f88d1f", "#ffc24a", "#fff0a8");
 const kFaience = new Palette("#0e5a5c", "#15797a", "#1f9a96", "#3dbcb2", "#7fdcd0", "#d4fff7");
 const kPaving = new Palette("#6f6a60", "#8d877a", "#a8a293", "#bfb9a9", "#d3cdbd");
 const kGrass = new Palette("#3a7520", "#468a26", "#539e2c", "#62b033", "#74c03b", "#89cf45", "#a0dc55");
@@ -122,6 +125,12 @@ export const MATERIALS = {
     tile: lowRes(metal(kGold)),
     group: "gold",
     variants: ["ramp", "rampCornerOuter", "slabBottom", "stair", "stairCornerOuter"]
+  },
+  embers: {
+    name: "Embers",
+    tile: lowRes(embers(kEmbers)),
+    group: "fire",
+    variants: ["slabTop"]
   },
   faience: {
     name: "Faience",

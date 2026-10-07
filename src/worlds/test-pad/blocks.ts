@@ -47,7 +47,7 @@ const kMaterials = {
 } as const satisfies Record<string, MaterialSpec>;
 
 export const BLOCKS = defineBlocks(kMaterials, {
-  tilesetId: "test-pad",
+  blocksetId: "test-pad",
   finishes: { gold: { roughness: 0.38, metalness: 0.75 } }
 });
 

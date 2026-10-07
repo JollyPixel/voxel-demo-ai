@@ -108,7 +108,8 @@ export function torii(
  * Tōrō: a stone lantern on a post, its firebox a paper light between four
  * corner posts, under a little pyramid roof. The paper glows through its
  * emissive finish rather than a point light, which every pixel of the frame
- * would pay for (see FEEDBACK F-4).
+ * would pay for (see FEEDBACK F-4). It casts no block light: in daylight it
+ * barely showed and slowed worker builds (F-15).
  */
 export function stoneLantern(
   b: Brush,

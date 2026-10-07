@@ -6,11 +6,11 @@ import {
 } from "@jolly-pixel/pixel-draw.renderer";
 import {
   encodeVoxelWorld,
-  TilesetDocument,
+  BlocksetDocument,
   type BlockDefinition,
   type MaterialGroupJSON,
-  type TilesetDefinition,
-  type TilesetDocumentJSON,
+  type BlocksetDefinition,
+  type BlocksetDocumentJSON,
   type VoxelWorldJSON
 } from "@jolly-pixel/voxel.renderer";
 
@@ -29,7 +29,7 @@ const kMiB = 1024 * 1024;
 /**
  * Decoded sizes the voxel-map editor's import accepts: the
  * `catalogArchiveLimits` of its `WORLD_BACKEND_TUNING`
- * (`editors/voxel-map/src/boot/worldProject.ts`), which the editor package
+ * (`editors/voxel-map/src/boot/defaultSeed.ts`), which the editor package
  * does not export.
  */
 export const EDITOR_ARCHIVE_LIMITS: Readonly<ArchiveLimits> = {
@@ -38,23 +38,23 @@ export const EDITOR_ARCHIVE_LIMITS: Readonly<ArchiveLimits> = {
 };
 
 /**
- * Registered kind names and the tileset document version: `VOXEL_MAP_KIND`,
- * `TILESET_KIND` and `TILESET_DOCUMENT_VERSION` of the asset packages.
+ * Registered kind names and the blockset document version: `VOXEL_MAP_KIND`,
+ * `BLOCKSET_KIND` and `BLOCKSET_DOCUMENT_VERSION` of the asset packages.
  */
 const kVoxelMapKind = "voxelmap";
-const kTilesetKind = "tileset";
-const kTilesetDocumentVersion = 1;
+const kBlocksetKind = "blockset";
+const kBlocksetDocumentVersion = 1;
 const kManifestPath = "bundle.json";
 
 /**
- * Slot the exported tileset takes in the map. The demo registers its blocks
+ * Slot the exported blockset takes in the map. The demo registers its blocks
  * under their local ids, which are the world ids of slot 0.
  */
-const kTilesetSlot = 0;
+const kBlocksetSlot = 0;
 
-export interface EditorArchiveTileset {
+export interface EditorArchiveBlockset {
   /**
-   * Tileset id the blocks' tile references point to.
+   * Blockset id the blocks' tile references point to.
    */
   id: string;
   tileSize: number;
@@ -68,7 +68,7 @@ export interface EditorArchiveOptions {
    * Output of `VoxelDocument.save()`.
    */
   world: VoxelWorldJSON;
-  tileset: EditorArchiveTileset;
+  blockset: EditorArchiveBlockset;
   /**
    * File stem and id prefix of both assets inside the workspace. Keep it
    * stable, so importing a new export with "replace" updates the assets of
@@ -90,10 +90,10 @@ export interface EditorArchive {
 }
 
 /**
- * A `.tileset.json` asset: the voxel-map editor's `TilesetAssetDocument`.
+ * A `.blockset.json` asset: the voxel-map editor's `BlocksetAssetDocument`.
  */
-interface TilesetAssetDocument extends TilesetDocumentJSON {
-  version: typeof kTilesetDocumentVersion;
+interface BlocksetAssetDocument extends BlocksetDocumentJSON {
+  version: typeof kBlocksetDocumentVersion;
   pixels: PixelArtDocumentData;
 }
 
@@ -101,30 +101,30 @@ export class EditorArchiveError extends Error {}
 
 /**
  * Packs a saved world and its blocks as a `.zip` the voxel-map editor imports
- * from Map Config: a `.voxelmap.json` root, the `.tileset.json` asset it
+ * from Map Config: a `.voxelmap.json` root, the `.blockset.json` asset it
  * links (atlas pixels, tile size, blocks and material groups), and the
  * `bundle.json` manifest.
  */
 export function createEditorArchive(
   options: EditorArchiveOptions
 ): EditorArchive {
-  const { world, tileset, name, limits = EDITOR_ARCHIVE_LIMITS } = options;
+  const { world, blockset, name, limits = EDITOR_ARCHIVE_LIMITS } = options;
   const mapId = `${name}-map`;
-  const tilesetId = `${name}-tileset`;
+  const blocksetId = `${name}-blockset`;
   const mapPath = `maps/${name}.voxelmap.json`;
-  const tilesetPath = `tilesets/${name}.tileset.json`;
+  const blocksetPath = `blocksets/${name}.blockset.json`;
 
-  if (!world.tilesets.some(({ id }) => id === tileset.id)) {
-    throw new EditorArchiveError(`world has no tileset "${tileset.id}"`);
+  if (!world.blocksets.some(({ id }) => id === blockset.id)) {
+    throw new EditorArchiveError(`world has no blockset "${blockset.id}"`);
   }
 
   const files: Record<string, Uint8Array> = {
-    [tilesetPath]: encodeJSON(tilesetAssetDocument(tileset)),
+    [blocksetPath]: encodeJSON(blocksetAssetDocument(blockset)),
     // The editor re-partitions a document of another chunk size on load.
     [mapPath]: encodeVoxelWorld({
       ...world,
-      tilesets: world.tilesets.map((definition) => (definition.id === tileset.id ?
-        linkedTileset(definition, tilesetId) :
+      blocksets: world.blocksets.map((definition) => (definition.id === blockset.id ?
+        linkedBlockset(definition, blocksetId) :
         definition))
     }),
     [kManifestPath]: new TextEncoder().encode(JSON.stringify({
@@ -132,7 +132,7 @@ export function createEditorArchive(
       root: { id: mapId, kind: kVoxelMapKind },
       // Dependencies first, root last: import follows this order.
       assets: [
-        { id: tilesetId, kind: kTilesetKind, path: tilesetPath },
+        { id: blocksetId, kind: kBlocksetKind, path: blocksetPath },
         { id: mapId, kind: kVoxelMapKind, path: mapPath }
       ]
     }, null, 2))
@@ -151,35 +151,35 @@ export function createEditorArchive(
 }
 
 /**
- * The stored form of a tileset asset. `TilesetDocument` makes the blocks
- * tileset-local: their tile references name no tileset, and the editor
+ * The stored form of a blockset asset. `BlocksetDocument` makes the blocks
+ * blockset-local: their tile references name no blockset, and the editor
  * projects them into the map's slot on load.
  */
-function tilesetAssetDocument(
-  { tileSize, atlas, blocks, materialGroups }: EditorArchiveTileset
-): TilesetAssetDocument {
+function blocksetAssetDocument(
+  { tileSize, atlas, blocks, materialGroups }: EditorArchiveBlockset
+): BlocksetAssetDocument {
   const { width, height, data } = atlas;
-  const document = new TilesetDocument({ tileSize, blocks, materialGroups });
+  const document = new BlocksetDocument({ tileSize, blocks, materialGroups });
 
   return {
-    version: kTilesetDocumentVersion,
+    version: kBlocksetDocumentVersion,
     pixels: createPixelArtDocument({ x: width, y: height }, data),
     ...document.toJSON()
   };
 }
 
 /**
- * The editor reads a tileset's pixels, tile size and blocks from the catalog
+ * The editor reads a blockset's pixels, tile size and blocks from the catalog
  * asset named by `asset`, so the link keeps only its id and slot.
  */
-function linkedTileset(
-  definition: TilesetDefinition,
+function linkedBlockset(
+  definition: BlocksetDefinition,
   assetId: string
-): TilesetDefinition {
+): BlocksetDefinition {
   return {
     id: definition.id,
-    slot: kTilesetSlot,
-    asset: { id: assetId, kind: kTilesetKind }
+    slot: kBlocksetSlot,
+    asset: { id: assetId, kind: kBlocksetKind }
   };
 }
 

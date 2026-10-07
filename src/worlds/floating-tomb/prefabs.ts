@@ -436,7 +436,9 @@ export function sarcophagus(
 }
 
 /**
- * Stone post with a gold bowl; `lit` adds a warm point light above it.
+ * Stone post with a gold bowl; `lit` heaps glowing embers on the bowl, in
+ * the same merged cell, and they light the blocks around through the
+ * engine's block light.
  */
 export function brazier(
   b: Brush,
@@ -445,8 +447,10 @@ export function brazier(
 ): void {
   b.put([x, y, z], B.granite);
   b.put([x, y + 1, z], B.tombGranite.poleY);
-  b.put([x, y + 2, z], B.gold.slabBottom);
   if (lit) {
-    b.light([x, y + 3.5, z], { color: "#ffa34a", intensity: 30, distance: 22 });
+    b.merge([x, y + 2, z], B.gold.slabBottom, B.embers.slabTop);
+  }
+  else {
+    b.put([x, y + 2, z], B.gold.slabBottom);
   }
 }
