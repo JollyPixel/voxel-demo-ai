@@ -117,7 +117,7 @@ test('stores the atlas, blocks and finishes in the blockset asset', () => {
 test('blockset blocks project onto the ids the map stores', () => {
   const asset = blocksetAsset(unzip(archive().bytes));
   const [block] = new BlocksetDocument(asset).blocks;
-  const projected = new BlocksetSlot({ id: 'tomb', slot: 0 }).project(block);
+  const projected = new BlocksetSlot({ id: 'tomb', slot: 0 }).projectBlock(block);
 
   assert.equal(projected.id, 1);
   assert.equal(projected.defaultTexture.blocksetId, 'tomb');
